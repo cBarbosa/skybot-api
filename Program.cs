@@ -15,7 +15,7 @@ var configuration = builder.Configuration;
 // Configuração de CORS - Completamente permissivo para desenvolvimento
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("FinanGuardPolicy", policy =>
+    options.AddPolicy("SkybotPolicy", policy =>
     {
         policy.AllowAnyOrigin()
             .AllowAnyMethod()
@@ -65,12 +65,14 @@ app.MapGet("/slack/oauth", async (string code, string? state, HttpClient httpCli
         { "redirect_uri", redirectUri }
     };
 
+    Console.WriteLine("FormData: {0}", JsonSerializer.Serialize(formData));
+
     try
     {
         var content = new FormUrlEncodedContent(formData);
         var response = await httpClient.PostAsync("https://slack.com/api/oauth.v2.access", content);
         var responseContent = await response.Content.ReadAsStringAsync();
-        
+
         Console.WriteLine("=== RESPOSTA DO SLACK (oauth.v2.access) ===");
         Console.WriteLine(responseContent);
         Console.WriteLine("=== FIM DA RESPOSTA ===");
@@ -141,6 +143,8 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient httpClient) 
 
         var response = await httpClient.PostAsync("https://slack.com/api/chat.postMessage", content);
         var responseContent = await response.Content.ReadAsStringAsync();
+
+        Console.WriteLine("ResponseContent: {0}", responseContent);
 
         return Results.Ok();
     }
