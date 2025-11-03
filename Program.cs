@@ -94,6 +94,56 @@ app.MapGet("/slack/oauth", async (string code, string? state, HttpClient httpCli
     }
 });
 
+// Eventos do Slack
+app.MapPost("/slack/events", async (HttpRequest request, HttpClient httpClient) =>
+{
+    using var reader = new StreamReader(request.Body);
+    var body = await reader.ReadToEndAsync();
+    var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+    // Verificação de URL
+    var urlVerification = JsonSerializer.Deserialize<SlackUrlVerification>(body, jsonOptions);
+    if (urlVerification?.Type == "url_verification")
+    {
+        return Results.Ok(new { challenge = urlVerification.Challenge });
+    }
+
+    var eventWrapper = JsonSerializer.Deserialize<SlackEventWrapper>(body, jsonOptions);
+
+    if (eventWrapper?.Event?.Type == "message" && !string.IsNullOrEmpty(eventWrapper.Event.Text))
+    {
+        var teamId = eventWrapper.TeamId;
+        var eventData = eventWrapper.Event;
+
+        if (eventData.User == "USLACKBOT" || eventData.Text.Contains("bot_id"))
+        {
+            return Results.Ok();
+        }
+
+        var token = await GetTokenAsync(teamId);
+        if (token == null)
+        {
+            return Results.BadRequest("Token não encontrado para o workspace.");
+        }
+
+        var responseMessage = new
+        {
+            channel = eventData.Channel,
+            text = $"Olá! Você disse: {eventData.Text}"
+        };
+
+        var content = new StringContent(JsonSerializer.Serialize(responseMessage), System.Text.Encoding.UTF8, "application/json");
+        httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.AccessToken);
+
+        var response = await httpClient.PostAsync("https://slack.com/api/chat.postMessage", content);
+        var responseContent = await response.Content.ReadAsStringAsync();
+
+        return Results.Ok();
+    }
+
+    return Results.Ok();
+});
+
 // Health check endpoint
 app.MapHealthChecks("/health/liveness", new()
 {
@@ -142,4 +192,12 @@ async Task StoreTokenAsync(string accessToken, string teamId, string teamName)
             "INSERT INTO SlackTokens (TeamId, TeamName, AccessToken) VALUES (@TeamId, @TeamName, @AccessToken)",
             new { TeamId = teamId, TeamName = teamName, AccessToken = accessToken });
     }
+}
+
+async Task<SlackToken> GetTokenAsync(string teamId)
+{
+    var connectionString = configuration.GetConnectionString("MySqlConnection");
+    await using var connection = new MySqlConnection(connectionString);
+    return await connection.QueryFirstOrDefaultAsync<SlackToken>(
+        "SELECT * FROM SlackTokens WHERE TeamId = @TeamId", new { TeamId = teamId });
 }
