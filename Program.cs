@@ -77,6 +77,18 @@ app.MapGet("/slack/oauth", async (string code, string? state, HttpClient httpCli
     }
 });
 
+// Health check endpoint
+app.MapHealthChecks("/health");
+
+// Endpoint de informações da API
+app.MapGet("/", () => new
+{
+    Application = "Skybot API",
+    Version = "1.0.0",
+    Environment = app.Environment.EnvironmentName,
+    Timestamp = DateTime.UtcNow
+});
+
 app.Run();
 return;
 
