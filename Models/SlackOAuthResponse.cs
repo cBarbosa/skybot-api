@@ -1,10 +1,15 @@
 // Modelo para a resposta do Slack OAuth
+
+using System.Text.Json.Serialization;
+
 namespace skybot.Models;
 
 internal record SlackOAuthResponse(
-    bool Ok,
-    string AccessToken,
-    SlackTeam? Team,          // objeto aninhado
-    string? Error = null);
+    [property: JsonPropertyName("ok")]           bool Ok,
+    [property: JsonPropertyName("access_token")] string AccessToken,
+    [property: JsonPropertyName("team")]         SlackTeam? Team,
+    [property: JsonPropertyName("error")]        string? Error = null);
 
-internal record SlackTeam(string Id, string Name);
+internal record SlackTeam(
+    [property: JsonPropertyName("id")]   string Id,
+    [property: JsonPropertyName("name")] string Name);

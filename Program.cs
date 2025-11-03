@@ -77,6 +77,9 @@ app.MapGet("/slack/oauth", async (string code, string? state, HttpClient httpCli
         Console.WriteLine(responseContent);
         Console.WriteLine("=== FIM DA RESPOSTA ===");
 
+        responseContent =
+            "{\n    \"ok\": true,\n    \"app_id\": \"A06BQS18TEZ\",\n    \"authed_user\": {\n        \"id\": \"U09K48KPT41\"\n    },\n    \"scope\": \"app_mentions:read,channels:history,channels:read,chat:write,im:history,incoming-webhook,users:read\",\n    \"token_type\": \"bot\",\n    \"access_token\": \"xoxe.xoxb-1-MS0yLTk2NDg0MDAwMTAyMDktOTgxNTI5MzMxNTM5OS05ODMwNzYxNzk4Njc0LTk4Mjg3MDY3OTQ2NDYtNDZiYzBjMWEzZTFjZWM2NzY2YzUwYzQwOWExZDc2Nzk1ZmJhNjk5MTBkY2ZkMDNlODBkNDM5NWZjMjA0YmQ0Zg\",\n    \"bot_user_id\": \"U09PZ8M99BR\",\n    \"refresh_token\": \"xoxe-1-My0xLTk2NDg0MDAwMTAyMDktOTgzMDc2MTc5ODY3NC05ODI3Mjk2NzQ2MjkzLTQ3NjczOWIzNDc0ODA1N2Y4OWQ5NTJhNmUwMTY1YzViN2Q0ZjE3ZGFjN2Q4ZjUxNTM2ODQ2ODU4ZjFkNjM4NjA\",\n    \"expires_in\": 42150,\n    \"team\": {\n        \"id\": \"T09K2BS0A65\",\n        \"name\": \"Xcurve\"\n    },\n    \"enterprise\": null,\n    \"is_enterprise_install\": false,\n    \"incoming_webhook\": {\n        \"channel\": \"analise-mesa\",\n        \"channel_id\": \"C09KM8W0MST\",\n        \"configuration_url\": \"https:\\/\\/xcurve-workspace.slack.com\\/services\\/B09R95UJEJC\",\n        \"url\": \"https:\\/\\/hooks.slack.com\\/services\\/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\"\n    }\n}";
+
         var oauthResponse = JsonSerializer.Deserialize<SlackOAuthResponse>(responseContent, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
         if (!oauthResponse.Ok)
@@ -152,6 +155,98 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient httpClient) 
     return Results.Ok();
 });
 
+app.MapGet("/slack/channels", async (string teamId, HttpClient httpClient) =>
+{
+    var token = await GetTokenAsync(teamId);  // Do MySQL
+    if (token == null) return Results.BadRequest("Token não encontrado.");
+
+    var formData = new Dictionary<string, string>
+    {
+        { "limit", "50" },
+        { "types", "public_channel" },
+        { "exclude_archived", "true" }
+    };
+
+    httpClient.DefaultRequestHeaders.Authorization = 
+        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.AccessToken);
+
+    var content = new FormUrlEncodedContent(formData);
+    var response = await httpClient.PostAsync("https://slack.com/api/conversations.list", content);
+    var json = await response.Content.ReadAsStringAsync();
+
+    return Results.Ok(JsonSerializer.Deserialize<object>(json));  // Ou modele a resposta
+});
+
+app.MapGet("/slack/users", async (string teamId, HttpClient httpClient) =>
+{
+    var token = await GetTokenAsync(teamId);
+    if (token == null) return Results.BadRequest("Token não encontrado.");
+
+    httpClient.DefaultRequestHeaders.Authorization = 
+        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.AccessToken);
+
+    var response = await httpClient.PostAsync("https://slack.com/api/users.list", null);
+    var json = await response.Content.ReadAsStringAsync();
+
+    return Results.Content(json, "application/json");
+});
+
+app.MapDelete("/slack/team/{teamId}", async (string teamId, HttpClient httpClient) =>
+{
+    var token = await GetTokenAsync(teamId);
+    if (token == null) return Results.BadRequest("Token não encontrado.");
+
+    // Revoga o token via auth.revoke
+    httpClient.DefaultRequestHeaders.Authorization = 
+        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.AccessToken);
+
+    var response = await httpClient.PostAsync("https://slack.com/api/auth.revoke", null);
+    var json = await response.Content.ReadAsStringAsync();
+
+    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+    var revokeResponse = JsonSerializer.Deserialize<JsonElement>(json, options);
+
+    if (revokeResponse.GetProperty("ok").GetBoolean())
+    {
+        // Deleta do MySQL
+        await DeleteTokenAsync(teamId);
+        return Results.Ok(new { Message = "Team desconectado com sucesso!", Revoked = true });
+    }
+
+    return Results.BadRequest($"Erro na revogação: {json}");
+});
+
+app.MapPost("/slack/home", async (string teamId, string userId, HttpClient http) =>
+{
+    var token = await GetTokenAsync(teamId);
+    var home = new
+    {
+        user_id = userId,
+        view = new
+        {
+            type = "home",
+            blocks = new object[]
+            {
+                new { type = "section", text = new { type = "mrkdwn", text = "*Bem-vindo ao Bot!*" } },
+                new { type = "actions", elements = new[] { new { type = "button", text = new { type = "plain_text", text = "Abrir Modal" }, action_id = "open_modal" } } }
+            }
+        }
+    };
+
+    http.DefaultRequestHeaders.Authorization = new("Bearer", token.AccessToken);
+    var resp = await http.PostAsync("https://slack.com/api/views.publish", JsonContent.Create(home));
+    return Results.Content(await resp.Content.ReadAsStringAsync(), "application/json");
+});
+
+app.MapPost("/slack/join/{channelId}", async (string teamId, string channelId, HttpClient http) =>
+{
+    var token = await GetTokenAsync(teamId);
+    http.DefaultRequestHeaders.Authorization = new("Bearer", token.AccessToken);
+
+    var resp = await http.PostAsync($"https://slack.com/api/conversations.join?channel={channelId}", null);
+    return Results.Content(await resp.Content.ReadAsStringAsync(), "application/json");
+});
+
 // Health check endpoint
 app.MapHealthChecks("/health/liveness", new()
 {
@@ -208,4 +303,12 @@ async Task<SlackToken> GetTokenAsync(string teamId)
     await using var connection = new MySqlConnection(connectionString);
     return await connection.QueryFirstOrDefaultAsync<SlackToken>(
         "SELECT * FROM SlackTokens WHERE TeamId = @TeamId", new { TeamId = teamId });
+}
+
+// Método para deletar do MySQL
+async Task DeleteTokenAsync(string teamId)
+{
+    var connectionString = configuration.GetConnectionString("MySqlConnection");
+    await using var connection = new MySqlConnection(connectionString);
+    await connection.ExecuteAsync("DELETE FROM SlackTokens WHERE TeamId = @TeamId", new { TeamId = teamId });
 }
