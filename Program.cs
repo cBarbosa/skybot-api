@@ -101,53 +101,38 @@ app.MapGet("/slack/oauth", async (string code, string? state, HttpClient httpCli
     }
 });
 
-// Eventos do Slack
 app.MapPost("/slack/events", async (HttpRequest request, HttpClient httpClient) =>
 {
-    using var reader = new StreamReader(request.Body);
-    var body = await reader.ReadToEndAsync();
+    var body = await new StreamReader(request.Body).ReadToEndAsync();
     var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
-    // Verificação de URL
-    var urlVerification = JsonSerializer.Deserialize<SlackUrlVerification>(body, jsonOptions);
-    if (urlVerification?.Type == "url_verification")
-    {
-        return Results.Ok(new { challenge = urlVerification.Challenge });
-    }
+    // URL Verification
+    if (JsonSerializer.Deserialize<SlackUrlVerification>(body, jsonOptions) is { Type: "url_verification" } verify)
+        return Results.Ok(new { challenge = verify.Challenge });
 
+    // Parse do evento
     var eventWrapper = JsonSerializer.Deserialize<SlackEventWrapper>(body, jsonOptions);
+    var evt = eventWrapper?.Event;
+    if (evt == null) return Results.Ok();
 
-    if (eventWrapper?.Event?.Type == "message" && !string.IsNullOrEmpty(eventWrapper.Event.Text))
+    // IGNORA: bot, USLACKBOT, sem user
+    if (evt.Subtype == "bot_message" || evt.BotId != null || string.IsNullOrEmpty(evt.User))
+        return Results.Ok();
+
+    if (evt.Type == "message" && !string.IsNullOrEmpty(evt.Text))
     {
-        var teamId = eventWrapper.TeamId;
-        var eventData = eventWrapper.Event;
+        var token = await GetTokenAsync(eventWrapper.TeamId);
+        if (token == null) return Results.Ok();
 
-        if (eventData.User == "USLACKBOT" || eventData.Text.Contains("bot_id"))
+        var payload = new
         {
-            return Results.Ok();
-        }
-
-        var token = await GetTokenAsync(teamId);
-        if (token == null)
-        {
-            return Results.BadRequest("Token não encontrado para o workspace.");
-        }
-
-        var responseMessage = new
-        {
-            channel = eventData.Channel,
-            text = $"Olá! Você disse: {eventData.Text}"
+            channel = evt.Channel,
+            text = $"Olá! Você disse: {evt.Text ?? string.Empty}",
+            thread_ts = evt.Ts // opcional: responde na mesma thread
         };
 
-        var content = new StringContent(JsonSerializer.Serialize(responseMessage), System.Text.Encoding.UTF8, "application/json");
-        httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.AccessToken);
-
-        var response = await httpClient.PostAsync("https://slack.com/api/chat.postMessage", content);
-        var responseContent = await response.Content.ReadAsStringAsync();
-
-        Console.WriteLine("ResponseContent: {0}", responseContent);
-
-        return Results.Ok();
+        httpClient.DefaultRequestHeaders.Authorization = new("Bearer", token.AccessToken);
+        await httpClient.PostAsync("https://slack.com/api/chat.postMessage", JsonContent.Create(payload));
     }
 
     return Results.Ok();
