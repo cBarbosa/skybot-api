@@ -85,13 +85,13 @@ app.MapGet("/slack/oauth", async (string code, string? state, HttpClient httpCli
         }
 
         // Armazena o token no MySQL
-        await StoreTokenAsync(oauthResponse.AccessToken, oauthResponse.TeamId, oauthResponse.TeamName);
+        await StoreTokenAsync(oauthResponse.AccessToken, oauthResponse.Team!.Id, oauthResponse.Team!.Name);
 
         return Results.Ok(new
         {
             Message = "App instalado com sucesso!",
-            TeamId = oauthResponse.TeamId,
-            TeamName = oauthResponse.TeamName
+            TeamId = oauthResponse.Team!.Id,
+            TeamName = oauthResponse.Team!.Name
         });
     }
     catch (Exception ex)
