@@ -239,14 +239,45 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
         processedEvents.TryAdd(eventWrapper.EventId, DateTime.UtcNow);
     }
 
-    if (evt == null || evt.Subtype == "bot_message" || evt.BotId != null || string.IsNullOrEmpty(evt.User) || evt.Type != "message" || string.IsNullOrEmpty(evt.Text) || !evt.Text.Trim().StartsWith("!"))
+    // Aceita eventos do tipo "message" ou "app_mentions"
+    if (evt == null || (evt.Type != "message" && evt.Type != "app_mentions"))
+        return Results.Ok();
+
+    // Filtra mensagens de bot
+    if (evt.Subtype == "bot_message" || evt.BotId != null)
+        return Results.Ok();
+
+    // Se não tem usuário (não é uma mensagem válida), ignora
+    if (string.IsNullOrEmpty(evt.User))
         return Results.Ok();
 
     var teamId = eventWrapper.TeamId;
     var token = await tokenRepository.GetTokenAsync(teamId);
     if (token == null) return Results.Ok();
 
-    var text = evt.Text.Trim();
+    // Processa o texto removendo menções ao bot
+    var rawText = evt.Text?.Trim() ?? "";
+    
+    // Remove menções ao bot do texto (ex: <@U123456> ou <@BOT_ID|nome>)
+    // Padrão: <@ID> ou <@ID|nome>
+    var text = System.Text.RegularExpressions.Regex.Replace(rawText, @"<@[^>]+>", "").Trim();
+    
+    // Se após remover menções não sobrou nada, ignora
+    if (string.IsNullOrEmpty(text))
+        return Results.Ok();
+
+    // Verifica se é uma menção ao bot (app_mentions) ou mensagem que começa com "!"
+    var isMention = evt.Type == "app_mentions";
+    var startsWithCommand = text.StartsWith("!");
+    
+    // Se não for menção e não começar com "!", ignora
+    if (!isMention && !startsWithCommand)
+        return Results.Ok();
+
+    // Se não começar com "!" mas é uma menção, adiciona para manter compatibilidade
+    if (!startsWithCommand && isMention)
+        text = "!" + text;
+
     var spaceIndex = text.IndexOf(' ');
     var commandKey = spaceIndex > 0 ? text[..spaceIndex] : text;
     var args = spaceIndex > 0 ? text[(spaceIndex + 1)..] : "";
@@ -254,8 +285,12 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
     if (!commands.TryGetValue(commandKey, out var action))
         return Results.Ok();
 
+    // Usa thread_ts se disponível, senão usa ts para responder na thread correta
+    var threadTs = evt.ThreadTs ?? evt.Ts;
+
     // Passa slackService e slackClient para o comando, incluindo TeamId no evento
-    await action(evt with { AccessToken = token.AccessToken, TeamId = teamId }, args, slackClient, slackService);
+    // Atualiza o texto processado (sem menções) e usa threadTs
+    await action(evt with { AccessToken = token.AccessToken, TeamId = teamId, Text = text, Ts = threadTs }, args, slackClient, slackService);
 
     return Results.Ok();
 });
