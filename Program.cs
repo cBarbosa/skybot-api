@@ -17,6 +17,7 @@ var configuration = builder.Configuration;
 builder.Services.AddSingleton<SlackTokenRepository>();
 builder.Services.AddSingleton<ReminderRepository>();
 builder.Services.AddScoped<SlackService>();
+builder.Services.AddHostedService<ReminderBackgroundService>();
 
 // Valida configurações obrigatórias
 var requiredConfigs = new[]
@@ -157,11 +158,9 @@ var commands = new Dictionary<string, Func<SlackEvent, string, HttpClient, Slack
 
     ["!horario"] = async (evt, _, slackClient, slackService) =>
     {
-        var now = DateTime.Now;
-        var offset = TimeZoneInfo.Local.GetUtcOffset(now);
-        var tz = offset >= TimeSpan.Zero ? $"+{offset:hh}" : $"{offset:hh}";
+        var now = TimezoneHelper.GetBrazilianTime();
         await slackService.SendMessageAsync(evt.AccessToken, evt.Channel, 
-            $"Agora são {now:HH:mm} (UTC{tz})", evt.Ts);
+            $"Agora são {now:HH:mm} (horário de Brasília - UTC-3)", evt.Ts);
     },
 
     ["!canal"] = async (evt, args, slackClient, slackService) =>
@@ -361,23 +360,30 @@ app.MapPost("/slack/reminders", async (
     if (string.IsNullOrWhiteSpace(req.Message))
         return Results.BadRequest(new CreateReminderResult(false, "Message é obrigatória."));
 
-    if (req.DueDate <= DateTime.UtcNow)
-        return Results.BadRequest(new CreateReminderResult(false, "DueDate deve ser uma data futura."));
+    // Assume que req.DueDate vem em horário de Brasília (UTC-3)
+    // Converte para UTC antes de salvar
+    var dueDateUtc = TimezoneHelper.ConvertToUtc(req.DueDate);
+    var utcNow = DateTime.UtcNow;
+    
+    // Compara em UTC para validação (ambos em UTC)
+    if (dueDateUtc <= utcNow)
+        return Results.BadRequest(new CreateReminderResult(false, "DueDate deve ser uma data futura (horário de Brasília)."));
 
     try
     {
+        // Salva em UTC no banco
         var reminderId = await reminderRepository.CreateReminderAsync(
             teamId, 
             req.UserId, 
             req.Message, 
-            req.DueDate, 
+            dueDateUtc,  // Salva em UTC
             req.ChannelId);
 
-        Console.WriteLine($"[INFO] Lembrete criado: Id={reminderId}, TeamId={teamId}, UserId={req.UserId}, DueDate={req.DueDate:dd/MM/yyyy HH:mm}");
+        Console.WriteLine($"[INFO] Lembrete criado: Id={reminderId}, TeamId={teamId}, UserId={req.UserId}, DueDate (BR)={req.DueDate:dd/MM/yyyy HH:mm}");
 
         return Results.Ok(new CreateReminderResult(
             Success: true,
-            Message: $"Lembrete criado com sucesso! Data: {req.DueDate:dd/MM/yyyy HH:mm}",
+            Message: $"Lembrete criado com sucesso! Data (Brasília): {req.DueDate:dd/MM/yyyy HH:mm}",
             ReminderId: reminderId
         ));
     }

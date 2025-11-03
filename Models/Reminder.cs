@@ -6,7 +6,9 @@ internal record Reminder(
     string? ChannelId,
     string? UserId,
     string? Message,
-    DateTime? DueDate
+    DateTime? DueDate,
+    bool IsSent = false,
+    DateTime? SentAt = null
 );
 
 internal record CreateReminderRequest(
