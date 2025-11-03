@@ -18,6 +18,12 @@ internal class ReminderRepository
     {
         await using var connection = new MySqlConnection(_connectionString);
         
+        // IMPORTANTE: Garante que o DateTime seja tratado como UTC
+        // O MySQL pode interpretar DateTime como Local se o Kind não for UTC
+        DateTime dateToSave = dueDate.Kind == DateTimeKind.Utc 
+            ? dueDate 
+            : DateTime.SpecifyKind(dueDate, DateTimeKind.Utc);
+        
         var sql = @"INSERT INTO Reminders (TeamId, UserId, Message, DueDate, ChannelId, IsSent) 
                     VALUES (@TeamId, @UserId, @Message, @DueDate, @ChannelId, @IsSent);
                     SELECT LAST_INSERT_ID();";
@@ -27,7 +33,7 @@ internal class ReminderRepository
             TeamId = teamId,
             UserId = userId,
             Message = message,
-            DueDate = dueDate,
+            DueDate = dateToSave,  // Garante que seja UTC
             ChannelId = channelId,
             IsSent = false
         });
@@ -69,13 +75,20 @@ internal class ReminderRepository
     {
         await using var connection = new MySqlConnection(_connectionString);
         
+        // Garante que o parâmetro seja UTC
+        DateTime utcParam = utcBefore.Kind == DateTimeKind.Utc 
+            ? utcBefore 
+            : DateTime.SpecifyKind(utcBefore, DateTimeKind.Utc);
+        
         // Filtra apenas lembretes NÃO enviados e com data vencida
+        // IMPORTANTE: Verifica se DueDate não é NULL antes de comparar
         var sql = @"SELECT * FROM Reminders 
-                    WHERE DueDate <= @UtcBefore 
+                    WHERE DueDate IS NOT NULL
+                      AND DueDate <= @UtcBefore 
                       AND (IsSent = FALSE OR IsSent IS NULL)
                     ORDER BY DueDate ASC";
         
-        var reminders = await connection.QueryAsync<Reminder>(sql, new { UtcBefore = utcBefore });
+        var reminders = await connection.QueryAsync<Reminder>(sql, new { UtcBefore = utcParam });
         return reminders.ToList();
     }
 

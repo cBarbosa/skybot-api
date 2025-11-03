@@ -66,6 +66,35 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// Cache para evitar processar eventos duplicados do Slack
+// Usa ConcurrentDictionary para thread-safety
+var processedEvents = new System.Collections.Concurrent.ConcurrentDictionary<string, DateTime>();
+var cleanupInterval = TimeSpan.FromHours(1);
+
+// Limpa eventos antigos periodicamente para evitar vazamento de memória
+_ = Task.Run(async () =>
+{
+    while (true)
+    {
+        await Task.Delay(cleanupInterval);
+        var cutoff = DateTime.UtcNow.Subtract(cleanupInterval);
+        var keysToRemove = processedEvents
+            .Where(kvp => kvp.Value < cutoff)
+            .Select(kvp => kvp.Key)
+            .ToList();
+        
+        foreach (var key in keysToRemove)
+        {
+            processedEvents.TryRemove(key, out _);
+        }
+        
+        if (keysToRemove.Count > 0)
+        {
+            Console.WriteLine($"[INFO] Limpeza de cache: removidos {keysToRemove.Count} eventos antigos");
+        }
+    }
+});
+
 // Endpoint para gerar o link de instalação
 app.MapGet("/slack/install", () =>
 {
@@ -197,6 +226,18 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
 
     var eventWrapper = JsonSerializer.Deserialize<SlackEventWrapper>(body, jsonOptions);
     var evt = eventWrapper?.Event;
+
+    // Verifica se o evento já foi processado (deduplicação)
+    if (!string.IsNullOrEmpty(eventWrapper?.EventId))
+    {
+        if (processedEvents.ContainsKey(eventWrapper.EventId))
+        {
+            Console.WriteLine($"[INFO] Evento duplicado ignorado: {eventWrapper.EventId}");
+            return Results.Ok(); // Responde OK mesmo para eventos duplicados
+        }
+        // Adiciona o evento ao cache com timestamp atual
+        processedEvents.TryAdd(eventWrapper.EventId, DateTime.UtcNow);
+    }
 
     if (evt == null || evt.Subtype == "bot_message" || evt.BotId != null || string.IsNullOrEmpty(evt.User) || evt.Type != "message" || string.IsNullOrEmpty(evt.Text) || !evt.Text.Trim().StartsWith("!"))
         return Results.Ok();
