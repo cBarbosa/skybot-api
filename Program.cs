@@ -262,12 +262,15 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
     // Padrão: <@ID> ou <@ID|nome>
     var text = System.Text.RegularExpressions.Regex.Replace(rawText, @"<@[^>]+>", "").Trim();
     
+    // Verifica se havia menção ao bot no texto original
+    var hasMention = System.Text.RegularExpressions.Regex.IsMatch(rawText, @"<@[^>]+>");
+    
     // Se após remover menções não sobrou nada, ignora
     if (string.IsNullOrEmpty(text))
         return Results.Ok();
 
-    // Verifica se é uma menção ao bot (app_mentions) ou mensagem que começa com "!"
-    var isMention = evt.Type == "app_mentions";
+    // Verifica se é uma menção ao bot (app_mentions OU mensagem com menção no texto)
+    var isMention = evt.Type == "app_mentions" || hasMention;
     var startsWithCommand = text.StartsWith("!");
     
     // Se não for menção e não começar com "!", ignora
