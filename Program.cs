@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Dapper;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using MySqlConnector;
 using skybot.Models;
 
@@ -10,6 +11,22 @@ builder.Services.AddHttpClient();
 
 // Carrega configurações do appsettings.json
 var configuration = builder.Configuration;
+
+// Configuração de CORS - Completamente permissivo para desenvolvimento
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FinanGuardPolicy", policy =>
+    {
+        policy.AllowAnyOrigin()
+            .AllowAnyMethod()
+            .AllowAnyHeader();
+    });
+});
+
+// Health Checks
+builder.Services.AddHealthChecks()
+    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["liveness"])
+    .AddMySql(builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string não configurada"));
 
 var app = builder.Build();
 
@@ -78,7 +95,15 @@ app.MapGet("/slack/oauth", async (string code, string? state, HttpClient httpCli
 });
 
 // Health check endpoint
-app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/liveness", new()
+{
+    Predicate = check => check.Tags.Contains("liveness")
+});
+
+app.MapHealthChecks("/health", new ()
+{
+    Predicate = _ => true  // Mostra todos os checks
+});
 
 // Endpoint de informações da API
 app.MapGet("/", () => new
