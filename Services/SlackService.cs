@@ -135,5 +135,30 @@ internal class SlackService
         var names = string.Join(", ", members.Select(m => m.DisplayName));
         return new ListMembersResult(true, $"Membros ({members.Count}): {names}", members);
     }
+
+    // Descobre o TeamId a partir de um token usando auth.test
+    public async Task<string?> GetTeamIdFromTokenAsync(string token, HttpClient? httpClient = null)
+    {
+        var client = httpClient ?? _httpClientFactory.CreateClient();
+        try
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var resp = await client.PostAsync("https://slack.com/api/auth.test", null);
+            var json = await resp.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<JsonElement>(json);
+            
+            if (result.GetProperty("ok").GetBoolean())
+            {
+                return result.TryGetProperty("team_id", out var teamIdProp) 
+                    ? teamIdProp.GetString() 
+                    : null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] Erro ao obter TeamId do token: {ex.Message}");
+        }
+        return null;
+    }
 }
 

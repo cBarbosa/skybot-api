@@ -74,12 +74,12 @@ internal class ReminderRepository
     public async Task<List<Reminder>> GetPendingRemindersAsync(DateTime utcBefore)
     {
         await using var connection = new MySqlConnection(_connectionString);
-        
+
         // Garante que o parâmetro seja UTC
-        DateTime utcParam = utcBefore.Kind == DateTimeKind.Utc 
+        var utcParam = utcBefore.Kind == DateTimeKind.Utc 
             ? utcBefore 
             : DateTime.SpecifyKind(utcBefore, DateTimeKind.Utc);
-        
+
         // Filtra apenas lembretes NÃO enviados e com data vencida
         // IMPORTANTE: Verifica se DueDate não é NULL antes de comparar
         var sql = @"SELECT * FROM Reminders 
@@ -87,9 +87,38 @@ internal class ReminderRepository
                       AND DueDate <= @UtcBefore 
                       AND (IsSent = FALSE OR IsSent IS NULL)
                     ORDER BY DueDate ASC";
-        
+
         var reminders = await connection.QueryAsync<Reminder>(sql, new { UtcBefore = utcParam });
         return reminders.ToList();
+    }
+
+    // Retorna lembretes pendentes com seus AccessTokens em uma única query usando JOIN
+    public async Task<List<(Reminder Reminder, string? AccessToken)>> GetPendingRemindersWithTokensAsync(DateTime utcBefore)
+    {
+        await using var connection = new MySqlConnection(_connectionString);
+
+        // Garante que o parâmetro seja UTC
+        var utcParam = utcBefore.Kind == DateTimeKind.Utc 
+            ? utcBefore 
+            : DateTime.SpecifyKind(utcBefore, DateTimeKind.Utc);
+
+        // Faz JOIN para trazer o AccessToken junto com os lembretes em uma única query
+        var sql = @"SELECT r.Id, r.TeamId, r.ChannelId, r.UserId, r.Message, r.DueDate, r.IsSent, r.SentAt,
+                           t.AccessToken
+                    FROM Reminders r
+                    LEFT JOIN SlackTokens t ON r.TeamId = t.TeamId
+                    WHERE r.DueDate IS NOT NULL
+                      AND r.DueDate <= @UtcBefore 
+                      AND (r.IsSent = FALSE OR r.IsSent IS NULL)
+                    ORDER BY r.DueDate ASC";
+
+        var results = await connection.QueryAsync(
+            sql,
+            (Reminder reminder, string? accessToken) => (reminder, accessToken),
+            new { UtcBefore = utcParam },
+            splitOn: "AccessToken");
+
+        return results.ToList();
     }
 
     public async Task MarkReminderAsSentAsync(int reminderId)
@@ -100,6 +129,14 @@ internal class ReminderRepository
                     SET IsSent = TRUE, SentAt = @SentAt 
                     WHERE Id = @Id";
         await connection.ExecuteAsync(sql, new { Id = reminderId, SentAt = DateTime.UtcNow });
+    }
+
+    public async Task UpdateReminderTeamIdAsync(int reminderId, string correctTeamId)
+    {
+        await using var connection = new MySqlConnection(_connectionString);
+        await connection.ExecuteAsync(
+            "UPDATE Reminders SET TeamId = @TeamId WHERE Id = @Id",
+            new { Id = reminderId, TeamId = correctTeamId });
     }
 }
 

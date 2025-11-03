@@ -1,3 +1,4 @@
+using skybot.Models;
 using skybot.Repositories;
 using skybot.Services;
 
@@ -41,23 +42,66 @@ public class ReminderBackgroundService : BackgroundService
         // Usa hora atual em UTC para buscar no banco (que está em UTC)
         var utcNow = DateTime.UtcNow;
         
-        // Busca lembretes onde DueDate (em UTC) <= agora (UTC)
-        var reminders = await reminderRepository.GetPendingRemindersAsync(utcNow);
+        // Busca lembretes com AccessToken em uma única query usando JOIN (otimização)
+        var remindersWithTokens = await reminderRepository.GetPendingRemindersWithTokensAsync(utcNow);
 
-        if (reminders.Count == 0)
+        if (remindersWithTokens.Count == 0)
             return;
 
-        Console.WriteLine($"[INFO] Processando {reminders.Count} lembrete(s) pendente(s)...");
+        Console.WriteLine($"[INFO] Processando {remindersWithTokens.Count} lembrete(s) pendente(s)...");
 
-        foreach (var reminder in reminders)
+        // Busca todos os tokens apenas se precisar fazer fallback (lazy loading)
+        List<skybot.Models.SlackToken>? allTokensCache = null;
+
+        foreach (var (reminder, accessToken) in remindersWithTokens)
         {
             try
             {
-                // Busca o token do team
-                var token = await tokenRepository.GetTokenAsync(reminder.TeamId!);
-                if (token == null)
+                string? tokenToUse = null;
+                string? correctTeamId = null;
+
+                // Se o AccessToken já veio do JOIN, usa ele diretamente
+                if (!string.IsNullOrEmpty(accessToken))
                 {
-                    Console.WriteLine($"[WARNING] Token não encontrado para team {reminder.TeamId}");
+                    tokenToUse = accessToken;
+                    correctTeamId = reminder.TeamId;
+                }
+
+                // Se não encontrou AccessToken no JOIN, tenta descobrir o TeamId correto (fallback)
+                if (string.IsNullOrEmpty(tokenToUse))
+                {
+                    // Busca todos os tokens apenas uma vez, se necessário (lazy loading)
+                    allTokensCache ??= await tokenRepository.GetAllTokensAsync();
+
+                    // Tenta descobrir o TeamId usando os tokens disponíveis
+                    foreach (var testToken in allTokensCache)
+                    {
+                        correctTeamId = await slackService.GetTeamIdFromTokenAsync(testToken.AccessToken);
+
+                        if (correctTeamId is not null)
+                        {
+                            // Busca o token correto pelo TeamId descoberto
+                            var foundToken = await tokenRepository.GetTokenAsync(correctTeamId);
+
+                            if (foundToken is not null)
+                            {
+                                tokenToUse = foundToken.AccessToken;
+                                
+                                // Se encontrou e o TeamId é diferente, atualiza o lembrete
+                                if (!string.IsNullOrEmpty(reminder.TeamId) && reminder.TeamId != correctTeamId)
+                                {
+                                    await reminderRepository.UpdateReminderTeamIdAsync(reminder.Id, correctTeamId);
+                                    Console.WriteLine($"[INFO] TeamId do lembrete {reminder.Id} atualizado: '{reminder.TeamId}' -> '{correctTeamId}'");
+                                }
+                                break; // Encontrou um token válido, sai do loop
+                            }
+                        }
+                    }
+                }
+
+                if (string.IsNullOrEmpty(tokenToUse))
+                {
+                    Console.WriteLine($"[WARNING] Não foi possível encontrar token para o lembrete {reminder.Id}. TeamId: '{reminder.TeamId}', ChannelId: '{reminder.ChannelId}', UserId: '{reminder.UserId}'");
                     continue;
                 }
 
@@ -70,14 +114,14 @@ public class ReminderBackgroundService : BackgroundService
                 var channel = reminder.ChannelId ?? reminder.UserId!;
                 var message = $"🔔 *Lembrete:* {reminder.Message}";
 
-                // Envia mensagem via Slack
-                var sent = await slackService.SendMessageAsync(token.AccessToken, channel, message);
+                // Envia mensagem via Slack (tokenToUse não pode ser null aqui devido à verificação acima)
+                var sent = await slackService.SendMessageAsync(tokenToUse, channel, message);
 
                 if (sent)
                 {
                     // Marca como enviado (mantém histórico no banco)
                     await reminderRepository.MarkReminderAsSentAsync(reminder.Id);
-                    Console.WriteLine($"[INFO] Lembrete {reminder.Id} enviado com sucesso para {channel} (hora original: {dueDateBr:dd/MM/yyyy HH:mm} BR)");
+                    Console.WriteLine($"[INFO] Lembrete {reminder.Id} enviado com sucesso para {channel} (TeamId: {correctTeamId ?? reminder.TeamId}, hora original: {dueDateBr:dd/MM/yyyy HH:mm} BR)");
                 }
                 else
                 {

@@ -54,5 +54,28 @@ internal class SlackTokenRepository
             "DELETE FROM SlackTokens WHERE TeamId = @TeamId", 
             new { TeamId = teamId });
     }
+
+    public async Task<List<SlackToken>> GetAllTokensAsync()
+    {
+        await using var connection = new MySqlConnection(_connectionString);
+        var tokens = await connection.QueryAsync<SlackToken>(
+            "SELECT * FROM SlackTokens ORDER BY UpdatedAt DESC");
+        return tokens.ToList();
+    }
+
+    public async Task<Dictionary<string, SlackToken>> GetTokensByTeamIdsAsync(IEnumerable<string> teamIds)
+    {
+        await using var connection = new MySqlConnection(_connectionString);
+        
+        var teamIdList = teamIds.Where(t => !string.IsNullOrEmpty(t)).Distinct().ToList();
+        if (teamIdList.Count == 0)
+            return new Dictionary<string, SlackToken>();
+        
+        var tokens = await connection.QueryAsync<SlackToken>(
+            "SELECT * FROM SlackTokens WHERE TeamId IN @TeamIds",
+            new { TeamIds = teamIdList });
+        
+        return tokens.ToDictionary(t => t.TeamId, t => t);
+    }
 }
 
