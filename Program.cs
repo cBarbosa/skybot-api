@@ -70,8 +70,12 @@ app.MapGet("/slack/oauth", async (string code, string? state, HttpClient httpCli
         var content = new FormUrlEncodedContent(formData);
         var response = await httpClient.PostAsync("https://slack.com/api/oauth.v2.access", content);
         var responseContent = await response.Content.ReadAsStringAsync();
+        
+        Console.WriteLine("=== RESPOSTA DO SLACK (oauth.v2.access) ===");
+        Console.WriteLine(responseContent);
+        Console.WriteLine("=== FIM DA RESPOSTA ===");
 
-        var oauthResponse = JsonSerializer.Deserialize<SlackOAuthResponse>(responseContent);
+        var oauthResponse = JsonSerializer.Deserialize<SlackOAuthResponse>(responseContent, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
         if (!oauthResponse.Ok)
         {
