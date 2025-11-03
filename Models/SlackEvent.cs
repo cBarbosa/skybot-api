@@ -7,4 +7,7 @@ internal record SlackEvent(
     [property: JsonPropertyName("channel")] string Channel,
     [property: JsonPropertyName("bot_id")] string? BotId,
     [property: JsonPropertyName("subtype")] string? Subtype,
-    [property: JsonPropertyName("ts")] string Ts); // opcional: thread_ts
+    [property: JsonPropertyName("ts")] string Ts, // opcional: thread_ts
+    [property: JsonPropertyName("team_id")] string? TeamId = null, // novo!
+    string? AccessToken = null // novo campo temporário
+);

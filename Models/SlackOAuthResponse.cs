@@ -1,5 +1,4 @@
 // Modelo para a resposta do Slack OAuth
-
 using System.Text.Json.Serialization;
 
 namespace skybot.Models;
