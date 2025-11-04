@@ -160,5 +160,33 @@ internal class SlackService
         }
         return null;
     }
+
+    public async Task<bool> SendBlocksAsync(string token, string channel, object[] blocks, string? threadTs = null)
+    {
+        var client = _httpClientFactory.CreateClient();
+        try
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var payload = new { channel, blocks, thread_ts = threadTs };
+            var resp = await client.PostAsync("https://slack.com/api/chat.postMessage", JsonContent.Create(payload));
+            var json = await resp.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<JsonElement>(json);
+            
+            if (!result.GetProperty("ok").GetBoolean())
+            {
+                var error = result.TryGetProperty("error", out var errProp) ? errProp.GetString() : "desconhecido";
+                Console.WriteLine($"[WARNING] Falha ao enviar blocos para canal {channel}: {error}");
+                return false;
+            }
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] Erro ao enviar blocos: {ex.Message}");
+            Console.WriteLine($"[ERROR] StackTrace: {ex.StackTrace}");
+            return false;
+        }
+    }
 }
 
