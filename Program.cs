@@ -169,7 +169,27 @@ var helpCommands = new[]
     new { Name = "!horario", Description = "Mostra a hora atual" },
     new { Name = "!canal <nome>", Description = "Cria um canal público" },
     new { Name = "!membros", Description = "Lista membros do canal" },
-    new { Name = "lembrete", Description = "Gerencia lembretes (botões interativos)" }
+    new { Name = "!lembretes", Description = "Gerencia lembretes (botões interativos)" }
+};
+
+// Função auxiliar para criar o menu de lembretes
+object[] CreateRemindersMenuBlocks(string userId) => new object[]
+{
+    new
+    {
+        type = "section",
+        text = new { type = "mrkdwn", text = "🔔 *Gerenciar Lembretes*\nEscolha uma opção:" }
+    },
+    new
+    {
+        type = "actions",
+        elements = new[]
+        {
+            new { type = "button", text = new { type = "plain_text", text = "📋 Ver Meus Lembretes" }, action_id = "view_my_reminders", value = userId },
+            new { type = "button", text = new { type = "plain_text", text = "➕ Adicionar Lembrete" }, action_id = "add_reminder_modal", value = userId },
+            new { type = "button", text = new { type = "plain_text", text = "📤 Enviar para Alguém" }, action_id = "send_reminder_modal", value = userId }
+        }
+    }
 };
 
 var commands = new Dictionary<string, Func<SlackEvent, string, HttpClient, SlackService, Task>>(
@@ -215,7 +235,7 @@ var commands = new Dictionary<string, Func<SlackEvent, string, HttpClient, Slack
         await slackService.SendMessageAsync(evt.AccessToken, evt.Channel, result.Message, evt.Ts);
     },
 
-    ["!lembrete"] = async (evt, _, slackClient, slackService) =>
+    ["!lembretes"] = async (evt, _, slackClient, slackService) =>
     {
         if (string.IsNullOrEmpty(evt.TeamId))
         {
@@ -223,91 +243,7 @@ var commands = new Dictionary<string, Func<SlackEvent, string, HttpClient, Slack
             return;
         }
 
-        var blocks = new object[]
-        {
-            new
-            {
-                type = "section",
-                text = new { type = "mrkdwn", text = "🔔 *Gerenciar Lembretes*\nEscolha uma opção:" }
-            },
-            new
-            {
-                type = "actions",
-                elements = new object[]
-                {
-                    new
-                    {
-                        type = "button",
-                        text = new { type = "plain_text", text = "📋 Ver Meus Lembretes" },
-                        action_id = "view_my_reminders",
-                        value = evt.User
-                    },
-                    new
-                    {
-                        type = "button",
-                        text = new { type = "plain_text", text = "➕ Adicionar Lembrete" },
-                        action_id = "add_reminder_modal",
-                        value = evt.User
-                    },
-                    new
-                    {
-                        type = "button",
-                        text = new { type = "plain_text", text = "📤 Enviar para Alguém" },
-                        action_id = "send_reminder_modal",
-                        value = evt.User
-                    }
-                }
-            }
-        };
-
-        await slackService.SendBlocksAsync(evt.AccessToken, evt.Channel, blocks, evt.Ts);
-    },
-
-    ["lembrete"] = async (evt, _, slackClient, slackService) =>
-    {
-        if (string.IsNullOrEmpty(evt.TeamId))
-        {
-            await slackService.SendMessageAsync(evt.AccessToken, evt.Channel, "Erro: Team ID não encontrado.", evt.Ts);
-            return;
-        }
-
-        var blocks = new object[]
-        {
-            new
-            {
-                type = "section",
-                text = new { type = "mrkdwn", text = "🔔 *Gerenciar Lembretes*\nEscolha uma opção:" }
-            },
-            new
-            {
-                type = "actions",
-                elements = new object[]
-                {
-                    new
-                    {
-                        type = "button",
-                        text = new { type = "plain_text", text = "📋 Ver Meus Lembretes" },
-                        action_id = "view_my_reminders",
-                        value = evt.User
-                    },
-                    new
-                    {
-                        type = "button",
-                        text = new { type = "plain_text", text = "➕ Adicionar Lembrete" },
-                        action_id = "add_reminder_modal",
-                        value = evt.User
-                    },
-                    new
-                    {
-                        type = "button",
-                        text = new { type = "plain_text", text = "📤 Enviar para Alguém" },
-                        action_id = "send_reminder_modal",
-                        value = evt.User
-                    }
-                }
-            }
-        };
-
+        var blocks = CreateRemindersMenuBlocks(evt.User);
         await slackService.SendBlocksAsync(evt.AccessToken, evt.Channel, blocks, evt.Ts);
     }
 };
@@ -622,17 +558,6 @@ app.MapGet("/slack/reminders/user/{userId}", async (
     }
 });
 
-// Health check endpoint
-app.MapHealthChecks("/health/liveness", new()
-{
-    Predicate = check => check.Tags.Contains("liveness")
-});
-
-app.MapHealthChecks("/health", new ()
-{
-    Predicate = _ => true  // Mostra todos os checks
-});
-
 // Endpoint para interações do Slack (botões e modais)
 app.MapPost("/slack/interactive", async (HttpRequest request, SlackService slackService, SlackTokenRepository tokenRepository, ReminderRepository reminderRepository) =>
 {
@@ -825,6 +750,18 @@ app.MapPost("/slack/interactive", async (HttpRequest request, SlackService slack
     }
 
     return Results.Ok();
+});
+
+
+// Health check endpoint
+app.MapHealthChecks("/health/liveness", new()
+{
+    Predicate = check => check.Tags.Contains("liveness")
+});
+
+app.MapHealthChecks("/health", new ()
+{
+    Predicate = _ => true  // Mostra todos os checks
 });
 
 // Endpoint de informações da API
