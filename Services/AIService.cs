@@ -11,6 +11,11 @@ internal class AIService
     // Chave: ThreadKey, Valor: Nome do Provider
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _threadProviders = 
         new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
+    
+    // Cache para armazenar histórico de conversas por thread
+    // Chave: ThreadKey, Valor: Lista de mensagens (Role, Content)
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, List<(string Role, string Content)>> _conversationHistory = 
+        new System.Collections.Concurrent.ConcurrentDictionary<string, List<(string Role, string Content)>>();
 
     public AIService(IHttpClientFactory httpClientFactory, IConfiguration configuration)
     {
@@ -55,10 +60,24 @@ internal class AIService
                 Console.WriteLine($"[INFO] Thread {threadKey} usa provider preferencial: {preferredProvider.Name}");
                 try
                 {
-                    var response = await preferredProvider.GetResponseAsync(userMessage, systemPrompt);
+                    // Obtém histórico de conversa para esta thread
+                    var history = _conversationHistory.GetOrAdd(threadKey, _ => new List<(string, string)>());
+                    
+                    var response = await preferredProvider.GetResponseAsync(userMessage, systemPrompt, history);
                     if (!string.IsNullOrWhiteSpace(response))
                     {
                         Console.WriteLine($"[SUCCESS] Resposta obtida de {preferredProvider.Name} (thread {threadKey})");
+                        
+                        // Adiciona mensagem do usuário e resposta da IA ao histórico
+                        history.Add(("user", userMessage));
+                        history.Add(("assistant", response));
+                        
+                        // Limita o histórico a 20 mensagens (10 trocas) para não exceder limites de tokens
+                        if (history.Count > 20)
+                        {
+                            history.RemoveRange(0, history.Count - 20);
+                        }
+                        
                         return response;
                     }
                     else
@@ -91,17 +110,36 @@ internal class AIService
             try
             {
                 Console.WriteLine($"[INFO] Tentando {provider.Name}...");
-                var response = await provider.GetResponseAsync(userMessage, systemPrompt);
+                
+                // Obtém histórico de conversa se tem threadKey
+                List<(string, string)>? history = null;
+                if (!string.IsNullOrEmpty(threadKey))
+                {
+                    history = _conversationHistory.GetOrAdd(threadKey, _ => new List<(string, string)>());
+                }
+                
+                var response = await provider.GetResponseAsync(userMessage, systemPrompt, history);
                 
                 if (!string.IsNullOrWhiteSpace(response))
                 {
                     Console.WriteLine($"[SUCCESS] Resposta obtida de {provider.Name}");
                     
-                    // Se tem threadKey, armazena o provider que funcionou
+                    // Se tem threadKey, armazena o provider que funcionou e atualiza histórico
                     if (!string.IsNullOrEmpty(threadKey))
                     {
                         _threadProviders.AddOrUpdate(threadKey, provider.Name, (key, oldValue) => provider.Name);
                         Console.WriteLine($"[INFO] Provider {provider.Name} associado à thread {threadKey}");
+                        
+                        // Adiciona mensagem do usuário e resposta da IA ao histórico
+                        var threadHistory = _conversationHistory.GetOrAdd(threadKey, _ => new List<(string, string)>());
+                        threadHistory.Add(("user", userMessage));
+                        threadHistory.Add(("assistant", response));
+                        
+                        // Limita o histórico a 20 mensagens (10 trocas) para não exceder limites de tokens
+                        if (threadHistory.Count > 20)
+                        {
+                            threadHistory.RemoveRange(0, threadHistory.Count - 20);
+                        }
                     }
                     
                     return response;
@@ -118,10 +156,12 @@ internal class AIService
         return null;
     }
     
-    // Método para limpar provider de uma thread (útil quando desativa modo agente virtual)
+    // Método para limpar provider e histórico de uma thread (útil quando desativa modo agente virtual)
     public static void ClearThreadProvider(string threadKey)
     {
         _threadProviders.TryRemove(threadKey, out _);
+        _conversationHistory.TryRemove(threadKey, out _);
+        Console.WriteLine($"[INFO] Provider e histórico limpos para thread {threadKey}");
     }
 }
 
