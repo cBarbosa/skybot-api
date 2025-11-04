@@ -72,7 +72,15 @@ var app = builder.Build();
 var processedEvents = new System.Collections.Concurrent.ConcurrentDictionary<string, DateTime>();
 var cleanupInterval = TimeSpan.FromHours(1);
 
-// Limpa eventos antigos periodicamente para evitar vazamento de memória
+// Cache para rastrear tentativas de comandos não encontrados
+// Chave: TeamId_UserId_Channel, Valor: número de tentativas
+var commandAttempts = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
+
+// Cache para armazenar mensagens pendentes de confirmação de IA
+// Chave: TeamId_UserId_Channel, Valor: objeto com mensagem e timestamp
+var pendingAIMessages = new System.Collections.Concurrent.ConcurrentDictionary<string, (string Message, string ThreadTs, DateTime Timestamp)>();
+
+        // Limpa eventos antigos periodicamente para evitar vazamento de memória
 _ = Task.Run(async () =>
 {
     while (true)
@@ -89,9 +97,21 @@ _ = Task.Run(async () =>
             processedEvents.TryRemove(key, out _);
         }
         
-        if (keysToRemove.Count > 0)
+        // Limpa também tentativas e mensagens pendentes antigas
+        var oldAttempts = commandAttempts
+            .Where(kvp => pendingAIMessages.TryGetValue(kvp.Key, out var pending) && pending.Timestamp < cutoff)
+            .Select(kvp => kvp.Key)
+            .ToList();
+        
+        foreach (var key in oldAttempts)
         {
-            Console.WriteLine($"[INFO] Limpeza de cache: removidos {keysToRemove.Count} eventos antigos");
+            commandAttempts.TryRemove(key, out _);
+            pendingAIMessages.TryRemove(key, out _);
+        }
+        
+        if (keysToRemove.Count > 0 || oldAttempts.Count > 0)
+        {
+            Console.WriteLine($"[INFO] Limpeza de cache: removidos {keysToRemove.Count} eventos e {oldAttempts.Count} tentativas antigas");
         }
     }
 });
@@ -325,34 +345,79 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
     // Tenta executar o comando primeiro
     if (commands.TryGetValue(commandKey, out var action))
     {
+        // Comando encontrado - reseta contador de tentativas
+        var attemptKey = $"{teamId}_{evt.User}_{evt.Channel}";
+        commandAttempts.TryRemove(attemptKey, out _);
+        pendingAIMessages.TryRemove(attemptKey, out _);
+        
         await action(evt with { AccessToken = token.AccessToken, TeamId = teamId, Text = text, Ts = threadTs }, args, slackClient, slackService);
         return Results.Ok();
     }
 
-    // Se não encontrou comando, usa a IA (apenas se for menção ou se começar com !)
+    // Se não encontrou comando, incrementa contador de tentativas
     if (isMention || startsWithCommand)
     {
+        var attemptKey = $"{teamId}_{evt.User}_{evt.Channel}";
+        var attempts = commandAttempts.AddOrUpdate(attemptKey, 1, (key, oldValue) => oldValue + 1);
+        
         // Remove o "!" se tiver, para enviar a mensagem limpa para a IA
         var aiMessage = startsWithCommand ? text.Substring(1).TrimStart() : text;
         
         if (!string.IsNullOrWhiteSpace(aiMessage))
         {
-            // Mostra que está pensando (opcional - pode remover se não quiser)
-            await slackService.SendMessageAsync(token.AccessToken, evt.Channel, "🤔 Pensando...", threadTs);
-            
-            var aiResponse = await aiService.GetAIResponseAsync(aiMessage);
-            
-            if (!string.IsNullOrWhiteSpace(aiResponse))
-            {
-                await slackService.SendMessageAsync(token.AccessToken, evt.Channel, aiResponse, threadTs);
-            }
-            else
+            // Se ainda não chegou a 3 tentativas, informa que não encontrou o comando
+            if (attempts < 3)
             {
                 await slackService.SendMessageAsync(
                     token.AccessToken, 
                     evt.Channel, 
-                    "Desculpe, não consegui processar sua mensagem no momento. Tente novamente mais tarde.", 
+                    $"❌ Comando '{commandKey}' não encontrado. Use !ajuda para ver os comandos disponíveis. ({attempts}/3 tentativas)", 
                     threadTs);
+                return Results.Ok();
+            }
+            
+            // Após 3 tentativas, pergunta se quer usar IA
+            if (attempts >= 3)
+            {
+                // Armazena a mensagem pendente
+                pendingAIMessages.AddOrUpdate(attemptKey, 
+                    (aiMessage, threadTs, DateTime.UtcNow),
+                    (key, oldValue) => (aiMessage, threadTs, DateTime.UtcNow));
+                
+                // Cria blocos com botões de confirmação
+                var confirmationBlocks = new object[]
+                {
+                    new
+                    {
+                        type = "section",
+                        text = new { type = "mrkdwn", text = $"🤖 Não encontrei o comando '{commandKey}' após {attempts} tentativas.\n\nDeseja que eu use a IA para responder sua mensagem?" }
+                    },
+                    new
+                    {
+                        type = "actions",
+                        elements = new object[]
+                        {
+                            new 
+                            { 
+                                type = "button", 
+                                text = new { type = "plain_text", text = "✅ Sim, usar IA" }, 
+                                action_id = "confirm_ai_yes",
+                                style = "primary",
+                                value = attemptKey
+                            },
+                            new 
+                            { 
+                                type = "button", 
+                                text = new { type = "plain_text", text = "❌ Não" }, 
+                                action_id = "confirm_ai_no",
+                                value = attemptKey
+                            }
+                        }
+                    }
+                };
+                
+                await slackService.SendBlocksAsync(token.AccessToken, evt.Channel, confirmationBlocks, threadTs);
+                return Results.Ok();
             }
         }
     }
@@ -588,7 +653,7 @@ app.MapGet("/slack/reminders/user/{userId}", async (
 });
 
 // Endpoint para interações do Slack (botões e modais)
-app.MapPost("/slack/interactive", async (HttpRequest request, SlackService slackService, SlackTokenRepository tokenRepository, ReminderRepository reminderRepository) =>
+app.MapPost("/slack/interactive", async (HttpRequest request, SlackService slackService, SlackTokenRepository tokenRepository, ReminderRepository reminderRepository, AIService aiService) =>
 {
     var formData = await request.ReadFormAsync();
     var payloadStr = formData["payload"].ToString();
@@ -599,182 +664,243 @@ app.MapPost("/slack/interactive", async (HttpRequest request, SlackService slack
     var payload = JsonSerializer.Deserialize<JsonElement>(payloadStr);
     var actionType = payload.TryGetProperty("type", out var typeProp) ? typeProp.GetString() : null;
 
-    if (actionType == "block_actions")
+    switch (actionType)
     {
-        var teamId = payload.GetProperty("team").GetProperty("id").GetString();
-        var user = payload.GetProperty("user").GetProperty("id").GetString();
-        var token = await tokenRepository.GetTokenAsync(teamId);
+        case "block_actions":
+        {
+            var teamId = payload.GetProperty("team").GetProperty("id").GetString();
+            var user = payload.GetProperty("user").GetProperty("id").GetString();
+            var token = await tokenRepository.GetTokenAsync(teamId);
         
-        if (token == null)
-            return Results.BadRequest("Token não encontrado");
+            if (token == null)
+                return Results.BadRequest("Token não encontrado");
 
-        var actions = payload.GetProperty("actions").EnumerateArray().First();
-        var actionId = actions.GetProperty("action_id").GetString();
-        var channel = payload.TryGetProperty("channel", out var ch) ? ch.GetProperty("id").GetString() : null;
+            var actions = payload.GetProperty("actions").EnumerateArray().First();
+            var actionId = actions.GetProperty("action_id").GetString();
+            var channel = payload.TryGetProperty("channel", out var ch) ? ch.GetProperty("id").GetString() : null;
 
-        if (actionId == "view_my_reminders")
-        {
-            var reminders = await reminderRepository.GetRemindersByUserAsync(teamId, user, includeSent: false);
-            
-            if (reminders.Count == 0)
+            switch (actionId)
             {
-                await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
-                    "Você não tem lembretes pendentes.", null);
-                return Results.Ok();
-            }
-
-            var remindersText = string.Join("\n", reminders.Select(r => 
-            {
-                var dueDateBr = r.DueDate.HasValue 
-                    ? TimezoneHelper.ConvertToBrazilianTime(r.DueDate.Value)
-                    : DateTime.MinValue;
-                return $"• *{dueDateBr:dd/MM/yyyy HH:mm}* - {r.Message}";
-            }));
-
-            await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
-                $"📋 *Seus Lembretes Pendentes:*\n{remindersText}", null);
-        }
-        else if (actionId == "add_reminder_modal" || actionId == "send_reminder_modal")
-        {
-            var isForSomeone = actionId == "send_reminder_modal";
-            var now = TimezoneHelper.GetBrazilianTime();
-            var defaultDate = now.AddHours(1).ToString("yyyy-MM-dd");
-            var defaultTime = now.AddHours(1).ToString("HH:mm");
-
-            var modalBlocks = new List<object>();
-
-            if (isForSomeone)
-            {
-                modalBlocks.Add(new
+                case "confirm_ai_yes":
                 {
-                    type = "input",
-                    block_id = "user_select",
-                    label = new { type = "plain_text", text = "Enviar para" },
-                    element = new
+                    var attemptKey = actions.GetProperty("value").GetString();
+                    
+                    if (pendingAIMessages.TryGetValue(attemptKey, out var pending))
                     {
-                        type = "users_select",
-                        action_id = "user",
-                        placeholder = new { type = "plain_text", text = "Selecione um usuário" }
+                        // Remove do cache
+                        pendingAIMessages.TryRemove(attemptKey, out _);
+                        commandAttempts.TryRemove(attemptKey, out _);
+                        
+                        // Mostra que está pensando
+                        await slackService.SendMessageAsync(token.AccessToken, channel ?? user, "🤔 Pensando...", pending.ThreadTs);
+                        
+                        // Chama a IA
+                        var aiResponse = await aiService.GetAIResponseAsync(pending.Message);
+                        
+                        if (!string.IsNullOrWhiteSpace(aiResponse))
+                        {
+                            await slackService.SendMessageAsync(token.AccessToken, channel ?? user, aiResponse, pending.ThreadTs);
+                        }
+                        else
+                        {
+                            // Nenhuma IA respondeu - reinicia a conversa
+                            await slackService.SendMessageAsync(
+                                token.AccessToken, 
+                                channel ?? user, 
+                                "⚠️ Não há agentes de IA disponíveis no momento.\n\nPor favor, utilize os comandos disponíveis. Digite `!ajuda` para ver a lista de comandos.", 
+                                pending.ThreadTs);
+                        }
                     }
-                });
+                    else
+                    {
+                        await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
+                            "A mensagem expirou. Por favor, envie novamente.", null);
+                    }
+                    break;
+                }
+                case "confirm_ai_no":
+                {
+                    var attemptKey = actions.GetProperty("value").GetString();
+                    
+                    // Remove do cache
+                    pendingAIMessages.TryRemove(attemptKey, out _);
+                    commandAttempts.TryRemove(attemptKey, out _);
+                    
+                    await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
+                        "Entendido! Use !ajuda para ver os comandos disponíveis.", null);
+                    break;
+                }
+                case "view_my_reminders":
+                {
+                    var reminders = await reminderRepository.GetRemindersByUserAsync(teamId, user, includeSent: false);
+            
+                    if (reminders.Count == 0)
+                    {
+                        await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
+                            "Você não tem lembretes pendentes.", null);
+                        return Results.Ok();
+                    }
+
+                    var remindersText = string.Join("\n", reminders.Select(r => 
+                    {
+                        var dueDateBr = r.DueDate.HasValue 
+                            ? TimezoneHelper.ConvertToBrazilianTime(r.DueDate.Value)
+                            : DateTime.MinValue;
+                        return $"• *{dueDateBr:dd/MM/yyyy HH:mm}* - {r.Message}";
+                    }));
+
+                    await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
+                        $"📋 *Seus Lembretes Pendentes:*\n{remindersText}", null);
+                    break;
+                }
+                case "add_reminder_modal":
+                case "send_reminder_modal":
+                {
+                    var isForSomeone = actionId == "send_reminder_modal";
+                    var now = TimezoneHelper.GetBrazilianTime();
+                    var defaultDate = now.AddHours(1).ToString("yyyy-MM-dd");
+                    var defaultTime = now.AddHours(1).ToString("HH:mm");
+
+                    var modalBlocks = new List<object>();
+
+                    if (isForSomeone)
+                    {
+                        modalBlocks.Add(new
+                        {
+                            type = "input",
+                            block_id = "user_select",
+                            label = new { type = "plain_text", text = "Enviar para" },
+                            element = new
+                            {
+                                type = "users_select",
+                                action_id = "user",
+                                placeholder = new { type = "plain_text", text = "Selecione um usuário" }
+                            }
+                        });
+                    }
+
+                    modalBlocks.Add(new
+                    {
+                        type = "input",
+                        block_id = "date_input",
+                        label = new { type = "plain_text", text = "Data" },
+                        element = new
+                        {
+                            type = "datepicker",
+                            action_id = "date",
+                            initial_date = defaultDate,
+                            placeholder = new { type = "plain_text", text = "Selecione a data" }
+                        }
+                    });
+
+                    modalBlocks.Add(new
+                    {
+                        type = "input",
+                        block_id = "time_input",
+                        label = new { type = "plain_text", text = "Hora (HH:mm)" },
+                        element = new
+                        {
+                            type = "plain_text_input",
+                            action_id = "time",
+                            initial_value = defaultTime,
+                            placeholder = new { type = "plain_text", text = "14:30" }
+                        }
+                    });
+
+                    modalBlocks.Add(new
+                    {
+                        type = "input",
+                        block_id = "message_input",
+                        label = new { type = "plain_text", text = "Mensagem" },
+                        element = new
+                        {
+                            type = "plain_text_input",
+                            action_id = "message",
+                            multiline = true,
+                            placeholder = new { type = "plain_text", text = "Digite a mensagem do lembrete..." }
+                        },
+                        optional = false
+                    });
+
+                    var modal = new
+                    {
+                        type = "modal",
+                        callback_id = isForSomeone ? "send_reminder_submit" : "add_reminder_submit",
+                        title = new { type = "plain_text", text = isForSomeone ? "Enviar Lembrete" : "Criar Lembrete" },
+                        submit = new { type = "plain_text", text = "Criar" },
+                        close = new { type = "plain_text", text = "Cancelar" },
+                        blocks = modalBlocks
+                    };
+
+                    var triggerId = payload.GetProperty("trigger_id").GetString();
+                    var client = new HttpClient();
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+            
+                    var response = await client.PostAsync("https://slack.com/api/views.open", 
+                        JsonContent.Create(new { trigger_id = triggerId, view = modal }));
+            
+                    return Results.Ok();
+                }
             }
 
-            modalBlocks.Add(new
-            {
-                type = "input",
-                block_id = "date_input",
-                label = new { type = "plain_text", text = "Data" },
-                element = new
-                {
-                    type = "datepicker",
-                    action_id = "date",
-                    initial_date = defaultDate,
-                    placeholder = new { type = "plain_text", text = "Selecione a data" }
-                }
-            });
-
-            modalBlocks.Add(new
-            {
-                type = "input",
-                block_id = "time_input",
-                label = new { type = "plain_text", text = "Hora (HH:mm)" },
-                element = new
-                {
-                    type = "plain_text_input",
-                    action_id = "time",
-                    initial_value = defaultTime,
-                    placeholder = new { type = "plain_text", text = "14:30" }
-                }
-            });
-
-            modalBlocks.Add(new
-            {
-                type = "input",
-                block_id = "message_input",
-                label = new { type = "plain_text", text = "Mensagem" },
-                element = new
-                {
-                    type = "plain_text_input",
-                    action_id = "message",
-                    multiline = true,
-                    placeholder = new { type = "plain_text", text = "Digite a mensagem do lembrete..." }
-                },
-                optional = false
-            });
-
-            var modal = new
-            {
-                type = "modal",
-                callback_id = isForSomeone ? "send_reminder_submit" : "add_reminder_submit",
-                title = new { type = "plain_text", text = isForSomeone ? "Enviar Lembrete" : "Criar Lembrete" },
-                submit = new { type = "plain_text", text = "Criar" },
-                close = new { type = "plain_text", text = "Cancelar" },
-                blocks = modalBlocks
-            };
-
-            var triggerId = payload.GetProperty("trigger_id").GetString();
-            var client = new HttpClient();
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
-            
-            var response = await client.PostAsync("https://slack.com/api/views.open", 
-                JsonContent.Create(new { trigger_id = triggerId, view = modal }));
-            
-            return Results.Ok();
+            break;
         }
-    }
-    else if (actionType == "view_submission")
-    {
-        var teamId = payload.GetProperty("team").GetProperty("id").GetString();
-        var user = payload.GetProperty("user").GetProperty("id").GetString();
-        var token = await tokenRepository.GetTokenAsync(teamId);
-        var callbackId = payload.GetProperty("view").GetProperty("callback_id").GetString();
-        var values = payload.GetProperty("view").GetProperty("state").GetProperty("values");
-
-        string? targetUserId = null;
-        if (callbackId == "send_reminder_submit")
+        case "view_submission":
         {
-            targetUserId = values.GetProperty("user_select").GetProperty("user").GetProperty("selected_user").GetString();
-        }
-        else
-        {
-            targetUserId = user; // Para o próprio usuário
-        }
+            var teamId = payload.GetProperty("team").GetProperty("id").GetString();
+            var user = payload.GetProperty("user").GetProperty("id").GetString();
+            var token = await tokenRepository.GetTokenAsync(teamId);
+            var callbackId = payload.GetProperty("view").GetProperty("callback_id").GetString();
+            var values = payload.GetProperty("view").GetProperty("state").GetProperty("values");
 
-        var date = values.GetProperty("date_input").GetProperty("date").GetProperty("selected_date").GetString();
-        var time = values.GetProperty("time_input").GetProperty("time").GetProperty("value").GetString();
-        var message = values.GetProperty("message_input").GetProperty("message").GetProperty("value").GetString();
+            string? targetUserId = null;
+            if (callbackId == "send_reminder_submit")
+            {
+                targetUserId = values.GetProperty("user_select").GetProperty("user").GetProperty("selected_user").GetString();
+            }
+            else
+            {
+                targetUserId = user; // Para o próprio usuário
+            }
 
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            return Results.Ok(new { response_action = "errors", errors = new Dictionary<string, string> { { "message_input", "A mensagem é obrigatória" } } });
-        }
+            var date = values.GetProperty("date_input").GetProperty("date").GetProperty("selected_date").GetString();
+            var time = values.GetProperty("time_input").GetProperty("time").GetProperty("value").GetString();
+            var message = values.GetProperty("message_input").GetProperty("message").GetProperty("value").GetString();
 
-        if (!TimeSpan.TryParse(time, out var timeSpan))
-        {
-            return Results.Ok(new { response_action = "errors", errors = new Dictionary<string, string> { { "time_input", "Formato de hora inválido. Use HH:mm" } } });
-        }
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return Results.Ok(new { response_action = "errors", errors = new Dictionary<string, string> { { "message_input", "A mensagem é obrigatória" } } });
+            }
 
-        var dueDate = DateTime.Parse($"{date} {time}");
-        var dueDateBr = TimezoneHelper.GetBrazilianTime();
-        dueDate = new DateTime(dueDate.Year, dueDate.Month, dueDate.Day, timeSpan.Hours, timeSpan.Minutes, 0);
+            if (!TimeSpan.TryParse(time, out var timeSpan))
+            {
+                return Results.Ok(new { response_action = "errors", errors = new Dictionary<string, string> { { "time_input", "Formato de hora inválido. Use HH:mm" } } });
+            }
+
+            var dueDate = DateTime.Parse($"{date} {time}");
+            var dueDateBr = TimezoneHelper.GetBrazilianTime();
+            dueDate = new DateTime(dueDate.Year, dueDate.Month, dueDate.Day, timeSpan.Hours, timeSpan.Minutes, 0);
         
-        if (dueDate <= dueDateBr)
-        {
-            return Results.Ok(new { response_action = "errors", errors = new Dictionary<string, string> { { "date_input", "A data/hora deve ser no futuro" } } });
-        }
+            if (dueDate <= dueDateBr)
+            {
+                return Results.Ok(new { response_action = "errors", errors = new Dictionary<string, string> { { "date_input", "A data/hora deve ser no futuro" } } });
+            }
 
-        var dueDateUtc = TimezoneHelper.ConvertToUtc(dueDate);
+            var dueDateUtc = TimezoneHelper.ConvertToUtc(dueDate);
         
-        try
-        {
-            var reminderId = await reminderRepository.CreateReminderAsync(teamId, targetUserId, message, dueDateUtc);
+            try
+            {
+                var reminderId = await reminderRepository.CreateReminderAsync(teamId, targetUserId, message, dueDateUtc);
             
-            return Results.Ok(new { response_action = "clear" });
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[ERROR] Erro ao criar lembrete: {ex.Message}");
-            return Results.Ok(new { response_action = "errors", errors = new Dictionary<string, string> { { "message_input", $"Erro: {ex.Message}" } } });
+                return Results.Ok(new { response_action = "clear" });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Erro ao criar lembrete: {ex.Message}");
+                return Results.Ok(new { response_action = "errors", errors = new Dictionary<string, string> { { "message_input", $"Erro: {ex.Message}" } } });
+            }
+
+            break;
         }
     }
 

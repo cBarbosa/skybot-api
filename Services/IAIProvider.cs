@@ -7,3 +7,4 @@ internal interface IAIProvider
     Task<string?> GetResponseAsync(string userMessage, string systemPrompt);
 }
 
+
