@@ -361,8 +361,8 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
             // Mostra que está pensando
             await slackService.SendMessageAsync(token.AccessToken, evt.Channel, "🤔 Pensando...", threadTs);
             
-            // Chama o agente virtual
-            var aiResponse = await aiService.GetAIResponseAsync(aiMessage);
+            // Chama o agente virtual passando o threadKey para manter consistência
+            var aiResponse = await aiService.GetAIResponseAsync(aiMessage, null, threadKey);
             
             if (!string.IsNullOrWhiteSpace(aiResponse))
             {
@@ -401,6 +401,7 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
         commandAttempts.TryRemove(attemptKey, out _);
         pendingAIMessages.TryRemove(attemptKey, out _);
         aiModeThreads.TryRemove(attemptKey, out _); // Desativa modo agente virtual se estiver ativo
+        AIService.ClearThreadProvider(attemptKey); // Limpa o provider associado
         
         await action(evt with { AccessToken = token.AccessToken, TeamId = teamId, Text = text, Ts = threadTs }, args, slackClient, slackService);
         return Results.Ok();
@@ -754,8 +755,8 @@ app.MapPost("/slack/interactive", async (HttpRequest request, SlackService slack
                         // Mostra que está pensando
                         await slackService.SendMessageAsync(token.AccessToken, channel ?? user, "🤔 Pensando...", pending.ThreadTs);
                         
-                        // Chama o agente virtual
-                        var aiResponse = await aiService.GetAIResponseAsync(pending.Message);
+                        // Chama o agente virtual passando o threadKey para manter consistência
+                        var aiResponse = await aiService.GetAIResponseAsync(pending.Message, null, attemptKey);
                         
                         if (!string.IsNullOrWhiteSpace(aiResponse))
                         {
@@ -790,6 +791,7 @@ app.MapPost("/slack/interactive", async (HttpRequest request, SlackService slack
                         
                         // Garante que não está em modo agente virtual
                         aiModeThreads.TryRemove(attemptKey, out _);
+                        AIService.ClearThreadProvider(attemptKey); // Limpa o provider associado
                         
                         // Informa na thread o que o usuário escolheu e que pode tentar mais 3 vezes
                         await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
