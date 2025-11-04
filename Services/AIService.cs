@@ -1,87 +1,67 @@
-using System.Net.Http.Headers;
-using System.Text.Json;
+using skybot.Services.Providers;
 
 namespace skybot.Services;
 
 internal class AIService
 {
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly string? _apiKey;
-    private readonly string _model;
+    private readonly List<IAIProvider> _providers;
+    private readonly string _defaultSystemPrompt;
 
     public AIService(IHttpClientFactory httpClientFactory, IConfiguration configuration)
     {
-        _httpClientFactory = httpClientFactory;
-        _apiKey = configuration["OpenAI:ApiKey"];
-        _model = configuration["OpenAI:Model"] ?? "gpt-3.5-turbo";
+        _defaultSystemPrompt = configuration["OpenAI:SystemPrompt"] ?? 
+            configuration["Gemini:SystemPrompt"] ??
+            "Você é um assistente útil e amigável. Responda de forma clara e concisa em português brasileiro.";
+
+        // Ordem de prioridade: primeiro OpenAI, depois Gemini
+        _providers = new List<IAIProvider>
+        {
+            new OpenAIProvider(httpClientFactory, configuration),
+            new GeminiProvider(httpClientFactory, configuration)
+        };
     }
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
+    public bool IsConfigured => _providers.Any(p => p.IsConfigured);
 
     public async Task<string?> GetAIResponseAsync(string userMessage, string? context = null)
     {
         if (!IsConfigured)
         {
-            Console.WriteLine("[WARNING] OpenAI API Key não configurada");
+            Console.WriteLine("[WARNING] Nenhuma API de IA configurada");
             return null;
         }
 
-        var client = _httpClientFactory.CreateClient();
-        try
-        {
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
-            client.Timeout = TimeSpan.FromSeconds(30);
+        var systemPrompt = context ?? _defaultSystemPrompt;
 
-            var messages = new List<object>
+        // Tenta cada provedor em ordem até um funcionar
+        foreach (var provider in _providers)
+        {
+            if (!provider.IsConfigured)
             {
-                new
+                Console.WriteLine($"[INFO] {provider.Name} não configurado, pulando...");
+                continue;
+            }
+
+            try
+            {
+                Console.WriteLine($"[INFO] Tentando {provider.Name}...");
+                var response = await provider.GetResponseAsync(userMessage, systemPrompt);
+                
+                if (!string.IsNullOrWhiteSpace(response))
                 {
-                    role = "system",
-                    content = context ?? "Você é um assistente útil e amigável. Responda de forma clara e concisa em português brasileiro."
-                },
-                new
-                {
-                    role = "user",
-                    content = userMessage
+                    Console.WriteLine($"[SUCCESS] Resposta obtida de {provider.Name}");
+                    return response;
                 }
-            };
-
-            var payload = new
-            {
-                model = _model,
-                messages = messages,
-                max_tokens = 500,
-                temperature = 0.7
-            };
-
-            var response = await client.PostAsync(
-                "https://api.openai.com/v1/chat/completions",
-                JsonContent.Create(payload));
-
-            var json = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
-            {
-                Console.WriteLine($"[ERROR] OpenAI API error: {response.StatusCode} - {json}");
-                return null;
             }
-
-            var result = JsonSerializer.Deserialize<JsonElement>(json);
-            
-            if (result.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+            catch (Exception ex)
             {
-                var message = choices[0].GetProperty("message").GetProperty("content").GetString();
-                return message?.Trim();
+                Console.WriteLine($"[WARNING] Erro ao usar {provider.Name}: {ex.Message}");
+                // Continua para o próximo provedor
             }
+        }
 
-            return null;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[ERROR] Exceção ao chamar OpenAI: {ex.Message}");
-            Console.WriteLine($"[ERROR] StackTrace: {ex.StackTrace}");
-            return null;
-        }
+        Console.WriteLine("[ERROR] Todos os provedores de IA falharam");
+        return null;
     }
 }
 
