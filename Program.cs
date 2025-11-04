@@ -345,8 +345,8 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
     // Tenta executar o comando primeiro
     if (commands.TryGetValue(commandKey, out var action))
     {
-        // Comando encontrado - reseta contador de tentativas
-        var attemptKey = $"{teamId}_{evt.User}_{evt.Channel}";
+        // Comando encontrado - reseta contador de tentativas (incluindo threadTs na chave)
+        var attemptKey = $"{teamId}_{evt.User}_{evt.Channel}_{threadTs}";
         commandAttempts.TryRemove(attemptKey, out _);
         pendingAIMessages.TryRemove(attemptKey, out _);
         
@@ -357,7 +357,8 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
     // Se não encontrou comando, incrementa contador de tentativas
     if (isMention || startsWithCommand)
     {
-        var attemptKey = $"{teamId}_{evt.User}_{evt.Channel}";
+        // Inclui threadTs na chave para que cada thread tenha sua própria contagem
+        var attemptKey = $"{teamId}_{evt.User}_{evt.Channel}_{threadTs}";
         var attempts = commandAttempts.AddOrUpdate(attemptKey, 1, (key, oldValue) => oldValue + 1);
         
         // Remove o "!" se tiver, para enviar a mensagem limpa para a IA
@@ -691,6 +692,10 @@ app.MapPost("/slack/interactive", async (HttpRequest request, SlackService slack
                         pendingAIMessages.TryRemove(attemptKey, out _);
                         commandAttempts.TryRemove(attemptKey, out _);
                         
+                        // Informa na thread o que o usuário escolheu
+                        await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
+                            "✅ Você escolheu usar a IA. Processando...", pending.ThreadTs);
+                        
                         // Mostra que está pensando
                         await slackService.SendMessageAsync(token.AccessToken, channel ?? user, "🤔 Pensando...", pending.ThreadTs);
                         
@@ -722,12 +727,25 @@ app.MapPost("/slack/interactive", async (HttpRequest request, SlackService slack
                 {
                     var attemptKey = actions.GetProperty("value").GetString();
                     
-                    // Remove do cache
-                    pendingAIMessages.TryRemove(attemptKey, out _);
-                    commandAttempts.TryRemove(attemptKey, out _);
-                    
-                    await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
-                        "Entendido! Use !ajuda para ver os comandos disponíveis.", null);
+                    if (pendingAIMessages.TryGetValue(attemptKey, out var pending))
+                    {
+                        // Remove do cache e zera contadores (reinicia o fluxo)
+                        pendingAIMessages.TryRemove(attemptKey, out _);
+                        commandAttempts.TryRemove(attemptKey, out _);
+                        
+                        // Informa na thread o que o usuário escolheu e que pode tentar mais 3 vezes
+                        await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
+                            "❌ Você escolheu não usar a IA.", pending.ThreadTs);
+                        
+                        await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
+                            "Entendido! Você pode tentar mais 3 vezes os comandos. Use !ajuda para ver os comandos disponíveis.", 
+                            pending.ThreadTs);
+                    }
+                    else
+                    {
+                        await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
+                            "A mensagem expirou. Por favor, envie novamente.", null);
+                    }
                     break;
                 }
                 case "view_my_reminders":
