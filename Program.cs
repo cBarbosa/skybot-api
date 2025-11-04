@@ -73,12 +73,16 @@ var processedEvents = new System.Collections.Concurrent.ConcurrentDictionary<str
 var cleanupInterval = TimeSpan.FromHours(1);
 
 // Cache para rastrear tentativas de comandos não encontrados
-// Chave: TeamId_UserId_Channel, Valor: número de tentativas
+// Chave: TeamId_UserId_Channel_ThreadTs, Valor: número de tentativas
 var commandAttempts = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
 
-// Cache para armazenar mensagens pendentes de confirmação de IA
-// Chave: TeamId_UserId_Channel, Valor: objeto com mensagem e timestamp
+// Cache para armazenar mensagens pendentes de confirmação de agente virtual
+// Chave: TeamId_UserId_Channel_ThreadTs, Valor: objeto com mensagem e timestamp
 var pendingAIMessages = new System.Collections.Concurrent.ConcurrentDictionary<string, (string Message, string ThreadTs, DateTime Timestamp)>();
+
+// Cache para rastrear threads que estão em modo agente virtual
+// Chave: TeamId_UserId_Channel_ThreadTs, Valor: timestamp da ativação
+var aiModeThreads = new System.Collections.Concurrent.ConcurrentDictionary<string, DateTime>();
 
         // Limpa eventos antigos periodicamente para evitar vazamento de memória
 _ = Task.Run(async () =>
@@ -109,9 +113,20 @@ _ = Task.Run(async () =>
             pendingAIMessages.TryRemove(key, out _);
         }
         
-        if (keysToRemove.Count > 0 || oldAttempts.Count > 0)
+        // Limpa threads em modo agente virtual antigas (mais de 24 horas)
+        var oldAiModeThreads = aiModeThreads
+            .Where(kvp => kvp.Value < cutoff.AddHours(-23))
+            .Select(kvp => kvp.Key)
+            .ToList();
+        
+        foreach (var key in oldAiModeThreads)
         {
-            Console.WriteLine($"[INFO] Limpeza de cache: removidos {keysToRemove.Count} eventos e {oldAttempts.Count} tentativas antigas");
+            aiModeThreads.TryRemove(key, out _);
+        }
+        
+        if (keysToRemove.Count > 0 || oldAttempts.Count > 0 || oldAiModeThreads.Count > 0)
+        {
+            Console.WriteLine($"[INFO] Limpeza de cache: removidos {keysToRemove.Count} eventos, {oldAttempts.Count} tentativas e {oldAiModeThreads.Count} threads de agente virtual antigas");
         }
     }
 });
@@ -327,7 +342,46 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
     var isMention = evt.Type == "app_mentions" || hasMention;
     var startsWithCommand = text.StartsWith("!");
     
-    // Se não for menção e não começar com "!", ignora
+    // Usa thread_ts se disponível, senão usa ts para responder na thread correta
+    var threadTs = evt.ThreadTs ?? evt.Ts;
+    
+    // Verifica se a thread está em modo agente virtual
+    var threadKey = $"{teamId}_{evt.User}_{evt.Channel}_{threadTs}";
+    var isInAIMode = aiModeThreads.ContainsKey(threadKey);
+    
+    // Se está em modo agente virtual e é uma mensagem em thread, processa direto com IA (ignora comandos)
+    // Aceita qualquer mensagem na thread, mesmo sem ! ou menção
+    if (isInAIMode && !string.IsNullOrEmpty(evt.ThreadTs))
+    {
+        // Processa qualquer mensagem na thread quando em modo agente virtual
+        var aiMessage = startsWithCommand ? text.Substring(1).TrimStart() : text;
+        
+        if (!string.IsNullOrWhiteSpace(aiMessage))
+        {
+            // Mostra que está pensando
+            await slackService.SendMessageAsync(token.AccessToken, evt.Channel, "🤔 Pensando...", threadTs);
+            
+            // Chama o agente virtual
+            var aiResponse = await aiService.GetAIResponseAsync(aiMessage);
+            
+            if (!string.IsNullOrWhiteSpace(aiResponse))
+            {
+                await slackService.SendMessageAsync(token.AccessToken, evt.Channel, aiResponse, threadTs);
+            }
+            else
+            {
+                // Nenhum agente virtual respondeu
+                await slackService.SendMessageAsync(
+                    token.AccessToken, 
+                    evt.Channel, 
+                    "⚠️ Não há agentes virtuais disponíveis no momento. Tente novamente em instantes.", 
+                    threadTs);
+            }
+        }
+        return Results.Ok();
+    }
+    
+    // Se não for menção e não começar com "!", ignora (exceto quando em modo agente virtual, que já foi tratado acima)
     if (!isMention && !startsWithCommand)
         return Results.Ok();
 
@@ -339,16 +393,14 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
     var commandKey = spaceIndex > 0 ? text[..spaceIndex] : text;
     var args = spaceIndex > 0 ? text[(spaceIndex + 1)..] : "";
 
-    // Usa thread_ts se disponível, senão usa ts para responder na thread correta
-    var threadTs = evt.ThreadTs ?? evt.Ts;
-
     // Tenta executar o comando primeiro
     if (commands.TryGetValue(commandKey, out var action))
     {
-        // Comando encontrado - reseta contador de tentativas (incluindo threadTs na chave)
+        // Comando encontrado - reseta contador de tentativas e desativa modo agente virtual (incluindo threadTs na chave)
         var attemptKey = $"{teamId}_{evt.User}_{evt.Channel}_{threadTs}";
         commandAttempts.TryRemove(attemptKey, out _);
         pendingAIMessages.TryRemove(attemptKey, out _);
+        aiModeThreads.TryRemove(attemptKey, out _); // Desativa modo agente virtual se estiver ativo
         
         await action(evt with { AccessToken = token.AccessToken, TeamId = teamId, Text = text, Ts = threadTs }, args, slackClient, slackService);
         return Results.Ok();
@@ -377,7 +429,7 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
                 return Results.Ok();
             }
             
-            // Após 3 tentativas, pergunta se quer usar IA
+            // Após 3 tentativas, pergunta se quer usar agente virtual
             if (attempts >= 3)
             {
                 // Armazena a mensagem pendente
@@ -391,7 +443,7 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
                     new
                     {
                         type = "section",
-                        text = new { type = "mrkdwn", text = $"🤖 Não encontrei o comando '{commandKey}' após {attempts} tentativas.\n\nDeseja que eu use a IA para responder sua mensagem?" }
+                        text = new { type = "mrkdwn", text = $"🤖 Não encontrei o comando '{commandKey}' após {attempts} tentativas.\n\nDeseja que eu use um agente virtual para responder sua mensagem?" }
                     },
                     new
                     {
@@ -401,7 +453,7 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
                             new 
                             { 
                                 type = "button", 
-                                text = new { type = "plain_text", text = "✅ Sim, usar IA" }, 
+                                text = new { type = "plain_text", text = "✅ Sim, usar agente virtual" }, 
                                 action_id = "confirm_ai_yes",
                                 style = "primary",
                                 value = attemptKey
@@ -692,14 +744,17 @@ app.MapPost("/slack/interactive", async (HttpRequest request, SlackService slack
                         pendingAIMessages.TryRemove(attemptKey, out _);
                         commandAttempts.TryRemove(attemptKey, out _);
                         
+                        // Marca a thread como modo agente virtual (a chave é a mesma: TeamId_UserId_Channel_ThreadTs)
+                        aiModeThreads.AddOrUpdate(attemptKey, DateTime.UtcNow, (key, oldValue) => DateTime.UtcNow);
+                        
                         // Informa na thread o que o usuário escolheu
                         await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
-                            "✅ Você escolheu usar a IA. Processando...", pending.ThreadTs);
+                            "✅ Você escolheu usar um agente virtual. A partir de agora, todas as mensagens nesta thread serão tratadas pelo agente virtual. Processando...", pending.ThreadTs);
                         
                         // Mostra que está pensando
                         await slackService.SendMessageAsync(token.AccessToken, channel ?? user, "🤔 Pensando...", pending.ThreadTs);
                         
-                        // Chama a IA
+                        // Chama o agente virtual
                         var aiResponse = await aiService.GetAIResponseAsync(pending.Message);
                         
                         if (!string.IsNullOrWhiteSpace(aiResponse))
@@ -708,11 +763,11 @@ app.MapPost("/slack/interactive", async (HttpRequest request, SlackService slack
                         }
                         else
                         {
-                            // Nenhuma IA respondeu - reinicia a conversa
+                            // Nenhum agente virtual respondeu - mas mantém o modo ativo
                             await slackService.SendMessageAsync(
                                 token.AccessToken, 
                                 channel ?? user, 
-                                "⚠️ Não há agentes de IA disponíveis no momento.\n\nPor favor, utilize os comandos disponíveis. Digite `!ajuda` para ver a lista de comandos.", 
+                                "⚠️ Não há agentes virtuais disponíveis no momento. Tente novamente em instantes.", 
                                 pending.ThreadTs);
                         }
                     }
@@ -733,9 +788,12 @@ app.MapPost("/slack/interactive", async (HttpRequest request, SlackService slack
                         pendingAIMessages.TryRemove(attemptKey, out _);
                         commandAttempts.TryRemove(attemptKey, out _);
                         
+                        // Garante que não está em modo agente virtual
+                        aiModeThreads.TryRemove(attemptKey, out _);
+                        
                         // Informa na thread o que o usuário escolheu e que pode tentar mais 3 vezes
                         await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
-                            "❌ Você escolheu não usar a IA.", pending.ThreadTs);
+                            "❌ Você escolheu não usar o agente virtual.", pending.ThreadTs);
                         
                         await slackService.SendMessageAsync(token.AccessToken, channel ?? user, 
                             "Entendido! Você pode tentar mais 3 vezes os comandos. Use !ajuda para ver os comandos disponíveis.", 
