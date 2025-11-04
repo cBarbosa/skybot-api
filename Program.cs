@@ -17,6 +17,7 @@ var configuration = builder.Configuration;
 builder.Services.AddSingleton<SlackTokenRepository>();
 builder.Services.AddSingleton<ReminderRepository>();
 builder.Services.AddScoped<SlackService>();
+builder.Services.AddScoped<AIService>();
 builder.Services.AddHostedService<ReminderBackgroundService>();
 
 // Valida configurações obrigatórias
@@ -248,7 +249,7 @@ var commands = new Dictionary<string, Func<SlackEvent, string, HttpClient, Slack
     }
 };
 
-app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient, SlackService slackService, SlackTokenRepository tokenRepository) =>
+app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient, SlackService slackService, SlackTokenRepository tokenRepository, AIService aiService) =>
 {
     var body = await new StreamReader(request.Body).ReadToEndAsync();
     var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -318,15 +319,43 @@ app.MapPost("/slack/events", async (HttpRequest request, HttpClient slackClient,
     var commandKey = spaceIndex > 0 ? text[..spaceIndex] : text;
     var args = spaceIndex > 0 ? text[(spaceIndex + 1)..] : "";
 
-    if (!commands.TryGetValue(commandKey, out var action))
-        return Results.Ok();
-
     // Usa thread_ts se disponível, senão usa ts para responder na thread correta
     var threadTs = evt.ThreadTs ?? evt.Ts;
 
-    // Passa slackService e slackClient para o comando, incluindo TeamId no evento
-    // Atualiza o texto processado (sem menções) e usa threadTs
-    await action(evt with { AccessToken = token.AccessToken, TeamId = teamId, Text = text, Ts = threadTs }, args, slackClient, slackService);
+    // Tenta executar o comando primeiro
+    if (commands.TryGetValue(commandKey, out var action))
+    {
+        await action(evt with { AccessToken = token.AccessToken, TeamId = teamId, Text = text, Ts = threadTs }, args, slackClient, slackService);
+        return Results.Ok();
+    }
+
+    // Se não encontrou comando, usa a IA (apenas se for menção ou se começar com !)
+    if (isMention || startsWithCommand)
+    {
+        // Remove o "!" se tiver, para enviar a mensagem limpa para a IA
+        var aiMessage = startsWithCommand ? text.Substring(1).TrimStart() : text;
+        
+        if (!string.IsNullOrWhiteSpace(aiMessage))
+        {
+            // Mostra que está pensando (opcional - pode remover se não quiser)
+            await slackService.SendMessageAsync(token.AccessToken, evt.Channel, "🤔 Pensando...", threadTs);
+            
+            var aiResponse = await aiService.GetAIResponseAsync(aiMessage);
+            
+            if (!string.IsNullOrWhiteSpace(aiResponse))
+            {
+                await slackService.SendMessageAsync(token.AccessToken, evt.Channel, aiResponse, threadTs);
+            }
+            else
+            {
+                await slackService.SendMessageAsync(
+                    token.AccessToken, 
+                    evt.Channel, 
+                    "Desculpe, não consegui processar sua mensagem no momento. Tente novamente mais tarde.", 
+                    threadTs);
+            }
+        }
+    }
 
     return Results.Ok();
 });
