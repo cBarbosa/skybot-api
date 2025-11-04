@@ -20,6 +20,11 @@ internal class GeminiProvider : IAIProvider
 
     public async Task<string?> GetResponseAsync(string userMessage, string systemPrompt)
     {
+        return await GetResponseAsync(userMessage, systemPrompt, null);
+    }
+
+    public async Task<string?> GetResponseAsync(string userMessage, string systemPrompt, List<(string Role, string Content)>? conversationHistory)
+    {
         if (!IsConfigured)
         {
             Console.WriteLine("[DEBUG] GeminiProvider: Não configurado (ApiKey ausente)");
@@ -30,19 +35,44 @@ internal class GeminiProvider : IAIProvider
         {
             _httpClient.Timeout = TimeSpan.FromSeconds(30);
 
-            // O Gemini usa um formato diferente - combina system prompt com user message
-            var fullPrompt = $"{systemPrompt}\n\nUsuário: {userMessage}\nAssistente:";
+            // Constrói o histórico de conversa para Gemini
+            var contents = new List<object>();
+
+            // Adiciona histórico de conversa se existir
+            if (conversationHistory != null && conversationHistory.Count > 0)
+            {
+                foreach (var (role, content) in conversationHistory)
+                {
+                    var geminiRole = role == "user" ? "user" : "model";
+                    contents.Add(new
+                    {
+                        role = geminiRole,
+                        parts = new[]
+                        {
+                            new { text = content }
+                        }
+                    });
+                }
+            }
+
+            // Adiciona a mensagem atual do usuário
+            contents.Add(new
+            {
+                role = "user",
+                parts = new[]
+                {
+                    new { text = userMessage }
+                }
+            });
 
             var payload = new
             {
-                contents = new[]
+                contents = contents.ToArray(),
+                systemInstruction = new
                 {
-                    new
+                    parts = new[]
                     {
-                        parts = new[]
-                        {
-                            new { text = fullPrompt }
-                        }
+                        new { text = systemPrompt }
                     }
                 },
                 generationConfig = new
@@ -56,7 +86,8 @@ internal class GeminiProvider : IAIProvider
             
             Console.WriteLine($"[DEBUG] GeminiProvider: Enviando requisição para modelo {_model}");
             Console.WriteLine($"[DEBUG] GeminiProvider: URL: {url.Replace(_apiKey ?? "", "***")}");
-            Console.WriteLine($"[DEBUG] GeminiProvider: Prompt length: {fullPrompt.Length} caracteres");
+            Console.WriteLine($"[DEBUG] GeminiProvider: User message length: {userMessage.Length} caracteres");
+            Console.WriteLine($"[DEBUG] GeminiProvider: Conversation history items: {(conversationHistory?.Count ?? 0)}");
             
             var response = await _httpClient.PostAsync(url, JsonContent.Create(payload));
 

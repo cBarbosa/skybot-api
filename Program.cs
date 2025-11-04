@@ -970,11 +970,49 @@ app.MapPost("/slack/interactive", async (HttpRequest request, SlackService slack
             {
                 var reminderId = await reminderRepository.CreateReminderAsync(teamId, targetUserId, message, dueDateUtc);
             
+                // Formata a data para exibição
+                var dueDateBrFormatted = TimezoneHelper.ConvertToBrazilianTime(dueDateUtc);
+                var dueDateFormatted = $"{dueDateBrFormatted:dd/MM/yyyy HH:mm}";
+                
+                // Envia mensagem de confirmação de sucesso
+                var successMessage = callbackId == "send_reminder_submit"
+                    ? $"✅ Lembrete criado com sucesso!\n\n📅 *Data/Hora:* {dueDateFormatted}\n💬 *Mensagem:* {message}\n👤 *Enviar para:* <@{targetUserId}>"
+                    : $"✅ Lembrete criado com sucesso!\n\n📅 *Data/Hora:* {dueDateFormatted}\n💬 *Mensagem:* {message}";
+                
+                // Envia mensagem privada para o usuário
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await slackService.SendMessageAsync(token.AccessToken, user, successMessage, null);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[ERROR] Erro ao enviar confirmação de lembrete: {ex.Message}");
+                    }
+                });
+            
                 return Results.Ok(new { response_action = "clear" });
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[ERROR] Erro ao criar lembrete: {ex.Message}");
+                Console.WriteLine($"[ERROR] StackTrace: {ex.StackTrace}");
+                
+                // Envia mensagem de erro para o usuário
+                var errorMessage = $"❌ Falha ao criar lembrete.\n\n*Erro:* {ex.Message}\n\nPor favor, tente novamente.";
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await slackService.SendMessageAsync(token.AccessToken, user, errorMessage, null);
+                    }
+                    catch (Exception sendEx)
+                    {
+                        Console.WriteLine($"[ERROR] Erro ao enviar mensagem de erro: {sendEx.Message}");
+                    }
+                });
+                
                 return Results.Ok(new { response_action = "errors", errors = new Dictionary<string, string> { { "message_input", $"Erro: {ex.Message}" } } });
             }
 
