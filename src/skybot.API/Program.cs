@@ -4,6 +4,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using skybot.API.Extensions;
 using skybot.Core.Interfaces;
 using skybot.Core.Models;
+using skybot.Core.Services;
 using skybot.Core.Services.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -71,13 +72,13 @@ app.MapGet("/slack/oauth", async (string code, string? state, HttpClient httpCli
 
         var oauthResponse = JsonSerializer.Deserialize<SlackOAuthResponse>(responseContent, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-        if (!oauthResponse.Ok)
+        if (oauthResponse == null || !oauthResponse.Ok)
         {
-            return Results.BadRequest($"Erro ao obter token: {oauthResponse.Error ?? "Erro desconhecido"}");
+            return Results.BadRequest($"Erro ao obter token: {oauthResponse?.Error ?? "Erro desconhecido"}");
         }
 
-        // Armazena o token no MySQL
-        await tokenRepository.StoreTokenAsync(oauthResponse.AccessToken, oauthResponse.Team!.Id, oauthResponse.Team!.Name);
+        // Armazena o token e refresh token no MySQL
+        await tokenRepository.StoreTokenAsync(oauthResponse.AccessToken, oauthResponse.RefreshToken, oauthResponse.Team!.Id, oauthResponse.Team!.Name);
 
         return Results.Ok(new
         {
@@ -113,7 +114,7 @@ app.MapPost("/slack/events", async (HttpRequest request, ISlackIntegrationServic
 });
 
 // Endpoint para listar canais
-app.MapGet("/slack/channels", async (string teamId, HttpClient httpClient, ISlackTokenRepository tokenRepository) =>
+app.MapGet("/slack/channels", async (string teamId, HttpClient httpClient, ISlackTokenRepository tokenRepository, ISlackTokenRefreshService? tokenRefreshService) =>
 {
     var token = await tokenRepository.GetTokenAsync(teamId);
     if (token == null) return Results.BadRequest("Token não encontrado.");
@@ -131,6 +132,26 @@ app.MapGet("/slack/channels", async (string teamId, HttpClient httpClient, ISlac
     var content = new FormUrlEncodedContent(formData);
     var response = await httpClient.PostAsync("https://slack.com/api/conversations.list", content);
     var json = await response.Content.ReadAsStringAsync();
+    var result = JsonSerializer.Deserialize<JsonElement>(json);
+
+    // Se erro de autenticação, tenta refresh
+    if (!result.GetProperty("ok").GetBoolean())
+    {
+        var error = result.TryGetProperty("error", out var errProp) ? errProp.GetString() : null;
+        if ((error == "invalid_auth" || error == "token_expired") && tokenRefreshService != null)
+        {
+            if (await tokenRefreshService.RefreshTokenAsync(teamId))
+            {
+                token = await tokenRepository.GetTokenAsync(teamId);
+                if (token != null)
+                {
+                    httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+                    response = await httpClient.PostAsync("https://slack.com/api/conversations.list", content);
+                    json = await response.Content.ReadAsStringAsync();
+                }
+            }
+        }
+    }
 
     return Results.Ok(JsonSerializer.Deserialize<object>(json));
 });
@@ -164,7 +185,7 @@ app.MapGet("/slack/channels/{channelId}/members", async (string channelId, HttpC
 });
 
 // Endpoint para listar usuários
-app.MapGet("/slack/users", async (string teamId, HttpClient httpClient, ISlackTokenRepository tokenRepository) =>
+app.MapGet("/slack/users", async (string teamId, HttpClient httpClient, ISlackTokenRepository tokenRepository, ISlackTokenRefreshService? tokenRefreshService) =>
 {
     var token = await tokenRepository.GetTokenAsync(teamId);
     if (token == null) return Results.BadRequest("Token não encontrado.");
@@ -174,6 +195,26 @@ app.MapGet("/slack/users", async (string teamId, HttpClient httpClient, ISlackTo
 
     var response = await httpClient.PostAsync("https://slack.com/api/users.list", null);
     var json = await response.Content.ReadAsStringAsync();
+    var result = JsonSerializer.Deserialize<JsonElement>(json);
+
+    // Se erro de autenticação, tenta refresh
+    if (!result.GetProperty("ok").GetBoolean())
+    {
+        var error = result.TryGetProperty("error", out var errProp) ? errProp.GetString() : null;
+        if ((error == "invalid_auth" || error == "token_expired") && tokenRefreshService != null)
+        {
+            if (await tokenRefreshService.RefreshTokenAsync(teamId))
+            {
+                token = await tokenRepository.GetTokenAsync(teamId);
+                if (token != null)
+                {
+                    httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+                    response = await httpClient.PostAsync("https://slack.com/api/users.list", null);
+                    json = await response.Content.ReadAsStringAsync();
+                }
+            }
+        }
+    }
 
     return Results.Content(json, "application/json");
 });
@@ -205,7 +246,7 @@ app.MapDelete("/slack/team/{teamId}", async (string teamId, HttpClient httpClien
 });
 
 // Endpoint para home do Slack
-app.MapPost("/slack/home", async (string teamId, string userId, HttpClient http, ISlackTokenRepository tokenRepository) =>
+app.MapPost("/slack/home", async (string teamId, string userId, HttpClient http, ISlackTokenRepository tokenRepository, ISlackTokenRefreshService? tokenRefreshService) =>
 {
     var token = await tokenRepository.GetTokenAsync(teamId);
     if (token == null) return Results.BadRequest("Token não encontrado.");
@@ -226,11 +267,33 @@ app.MapPost("/slack/home", async (string teamId, string userId, HttpClient http,
 
     http.DefaultRequestHeaders.Authorization = new("Bearer", token.AccessToken);
     var resp = await http.PostAsync("https://slack.com/api/views.publish", JsonContent.Create(home));
-    return Results.Content(await resp.Content.ReadAsStringAsync(), "application/json");
+    var json = await resp.Content.ReadAsStringAsync();
+    var result = JsonSerializer.Deserialize<JsonElement>(json);
+
+    // Se erro de autenticação, tenta refresh
+    if (!result.GetProperty("ok").GetBoolean())
+    {
+        var error = result.TryGetProperty("error", out var errProp) ? errProp.GetString() : null;
+        if ((error == "invalid_auth" || error == "token_expired") && tokenRefreshService != null)
+        {
+            if (await tokenRefreshService.RefreshTokenAsync(teamId))
+            {
+                token = await tokenRepository.GetTokenAsync(teamId);
+                if (token != null)
+                {
+                    http.DefaultRequestHeaders.Authorization = new("Bearer", token.AccessToken);
+                    resp = await http.PostAsync("https://slack.com/api/views.publish", JsonContent.Create(home));
+                    json = await resp.Content.ReadAsStringAsync();
+                }
+            }
+        }
+    }
+
+    return Results.Content(json, "application/json");
 });
 
 // Endpoint para entrar em canal
-app.MapPost("/slack/join/{channelId}", async (string teamId, string channelId, HttpClient http, ISlackTokenRepository tokenRepository) =>
+app.MapPost("/slack/join/{channelId}", async (string teamId, string channelId, HttpClient http, ISlackTokenRepository tokenRepository, ISlackTokenRefreshService? tokenRefreshService) =>
 {
     var token = await tokenRepository.GetTokenAsync(teamId);
     if (token == null) return Results.BadRequest("Token não encontrado.");
@@ -238,7 +301,29 @@ app.MapPost("/slack/join/{channelId}", async (string teamId, string channelId, H
     http.DefaultRequestHeaders.Authorization = new("Bearer", token.AccessToken);
 
     var resp = await http.PostAsync($"https://slack.com/api/conversations.join?channel={channelId}", null);
-    return Results.Content(await resp.Content.ReadAsStringAsync(), "application/json");
+    var json = await resp.Content.ReadAsStringAsync();
+    var result = JsonSerializer.Deserialize<JsonElement>(json);
+
+    // Se erro de autenticação, tenta refresh
+    if (!result.GetProperty("ok").GetBoolean())
+    {
+        var error = result.TryGetProperty("error", out var errProp) ? errProp.GetString() : null;
+        if ((error == "invalid_auth" || error == "token_expired") && tokenRefreshService != null)
+        {
+            if (await tokenRefreshService.RefreshTokenAsync(teamId))
+            {
+                token = await tokenRepository.GetTokenAsync(teamId);
+                if (token != null)
+                {
+                    http.DefaultRequestHeaders.Authorization = new("Bearer", token.AccessToken);
+                    resp = await http.PostAsync($"https://slack.com/api/conversations.join?channel={channelId}", null);
+                    json = await resp.Content.ReadAsStringAsync();
+                }
+            }
+        }
+    }
+
+    return Results.Content(json, "application/json");
 });
 
 // Endpoint para criar lembrete

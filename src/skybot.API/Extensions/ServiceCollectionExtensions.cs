@@ -96,9 +96,11 @@ public static class ServiceCollectionExtensions
         // Repositórios - Scoped (seguro para Dapper)
         services.AddScoped<IReminderRepository, ReminderRepository>();
         services.AddScoped<ISlackTokenRepository, SlackTokenRepository>();
+        services.AddScoped<ITokenRefreshHistoryRepository, TokenRefreshHistoryRepository>();
 
         // Serviços de infraestrutura - Scoped
         services.AddScoped<ISlackService, SlackService>();
+        services.AddScoped<ISlackTokenRefreshService, SlackTokenRefreshService>();
         services.AddScoped<IAIService, AIService>();
         services.AddSingleton<ICacheService, CacheService>(); // Singleton para cache em memória
 

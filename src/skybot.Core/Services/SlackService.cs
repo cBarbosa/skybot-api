@@ -11,11 +11,33 @@ public class SlackService : ISlackService
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ISlackTokenRepository _tokenRepository;
+    private readonly ISlackTokenRefreshService? _tokenRefreshService;
 
-    public SlackService(IHttpClientFactory httpClientFactory, ISlackTokenRepository tokenRepository)
+    public SlackService(
+        IHttpClientFactory httpClientFactory, 
+        ISlackTokenRepository tokenRepository,
+        ISlackTokenRefreshService? tokenRefreshService = null)
     {
         _httpClientFactory = httpClientFactory;
         _tokenRepository = tokenRepository;
+        _tokenRefreshService = tokenRefreshService;
+    }
+
+    private async Task<string?> HandleTokenRefreshAsync(string teamId, string? error)
+    {
+        // Verifica se é erro de autenticação que requer refresh
+        if (error != "invalid_auth" && error != "token_expired")
+            return null;
+
+        // Tenta renovar o token
+        if (_tokenRefreshService != null && await _tokenRefreshService.RefreshTokenAsync(teamId))
+        {
+            // Busca o novo token
+            var updatedToken = await _tokenRepository.GetTokenAsync(teamId);
+            return updatedToken?.AccessToken;
+        }
+
+        return null;
     }
 
     public async Task<bool> SendMessageAsync(string token, string channel, string text, string? threadTs = null)
@@ -67,6 +89,29 @@ public class SlackService : ISlackService
         if (!result.GetProperty("ok").GetBoolean())
         {
             var error = result.GetProperty("error").GetString() ?? "desconhecido";
+            
+            // Tenta refresh se erro de autenticação
+            var newToken = await HandleTokenRefreshAsync(teamId, error);
+            if (newToken != null)
+            {
+                // Tenta novamente com o novo token
+                client.DefaultRequestHeaders.Authorization = new("Bearer", newToken);
+                resp = await client.PostAsync("https://slack.com/api/conversations.create", JsonContent.Create(payload));
+                json = await resp.Content.ReadAsStringAsync();
+                result = JsonSerializer.Deserialize<JsonElement>(json);
+                
+                if (result.GetProperty("ok").GetBoolean())
+                {
+                    var newChannelId = result.GetProperty("channel").GetProperty("id").GetString();
+                    return new CreateChannelResult(
+                        Success: true,
+                        Message: $"Criei o canal #{normalizedName}!",
+                        ChannelId: newChannelId,
+                        ChannelName: normalizedName
+                    );
+                }
+            }
+            
             return new CreateChannelResult(false, $"Erro do Slack: {error}");
         }
 
@@ -97,7 +142,28 @@ public class SlackService : ISlackService
         if (!membersResult.GetProperty("ok").GetBoolean())
         {
             var error = membersResult.GetProperty("error").GetString() ?? "desconhecido";
-            return new ListMembersResult(false, $"Erro ao listar membros: {error}");
+            
+            // Tenta refresh se erro de autenticação
+            var newToken = await HandleTokenRefreshAsync(teamId, error);
+            if (newToken != null)
+            {
+                // Tenta novamente com o novo token
+                client.DefaultRequestHeaders.Authorization = new("Bearer", newToken);
+                membersResp = await client.PostAsync(
+                    $"https://slack.com/api/conversations.members?channel={channelId}&limit=100", null);
+                membersJson = await membersResp.Content.ReadAsStringAsync();
+                membersResult = JsonSerializer.Deserialize<JsonElement>(membersJson);
+                
+                if (!membersResult.GetProperty("ok").GetBoolean())
+                {
+                    error = membersResult.GetProperty("error").GetString() ?? "desconhecido";
+                    return new ListMembersResult(false, $"Erro ao listar membros: {error}");
+                }
+            }
+            else
+            {
+                return new ListMembersResult(false, $"Erro ao listar membros: {error}");
+            }
         }
 
         var memberIds = membersResult.GetProperty("members").EnumerateArray()
