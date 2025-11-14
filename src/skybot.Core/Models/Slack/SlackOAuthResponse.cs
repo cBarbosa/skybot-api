@@ -8,9 +8,13 @@ public record SlackOAuthResponse(
     [property: JsonPropertyName("refresh_token")] string? RefreshToken,
     [property: JsonPropertyName("expires_in")] int? ExpiresIn,
     [property: JsonPropertyName("team")] SlackTeam? Team,
+    [property: JsonPropertyName("authed_user")] SlackAuthedUser? AuthedUser,
     [property: JsonPropertyName("error")] string? Error = null);
 
 public record SlackTeam(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("name")] string Name);
+
+public record SlackAuthedUser(
+    [property: JsonPropertyName("id")] string Id);
 

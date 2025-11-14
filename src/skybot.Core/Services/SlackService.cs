@@ -256,5 +256,197 @@ public class SlackService : ISlackService
             return false;
         }
     }
+
+    public async Task<Models.Slack.SendMessageResult> SendMessageAsync(string teamId, Models.Slack.SendMessageRequest request)
+    {
+        // Buscar token do repositório
+        var tokenData = await _tokenRepository.GetTokenAsync(teamId);
+        if (tokenData == null)
+        {
+            return new Models.Slack.SendMessageResult(
+                Success: false,
+                Error: "Token não encontrado para o workspace"
+            );
+        }
+
+        var token = tokenData.AccessToken;
+        var client = _httpClientFactory.CreateClient();
+
+        // Determinar o destino baseado no tipo
+        var destination = request.DestinationType switch
+        {
+            Models.Slack.DestinationType.CHANNEL => request.DestinationId,
+            Models.Slack.DestinationType.USER => request.DestinationId,
+            Models.Slack.DestinationType.GROUP => request.DestinationId,
+            _ => request.DestinationId
+        };
+
+        // Construir payload - Text OU Blocks
+        var payload = new Dictionary<string, object>
+        {
+            ["channel"] = destination
+        };
+
+        if (request.Text != null)
+        {
+            payload["text"] = request.Text;
+        }
+        else if (request.Blocks != null)
+        {
+            payload["blocks"] = request.Blocks;
+        }
+
+        if (request.ThreadTs != null)
+        {
+            payload["thread_ts"] = request.ThreadTs;
+        }
+
+        try
+        {
+            // Primeira tentativa
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var response = await client.PostAsync(
+                "https://slack.com/api/chat.postMessage",
+                JsonContent.Create(payload)
+            );
+
+            var json = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<JsonElement>(json);
+
+            if (!result.GetProperty("ok").GetBoolean())
+            {
+                var error = result.TryGetProperty("error", out var errProp) ? errProp.GetString() : "desconhecido";
+
+                // Tentar refresh do token se for erro de autenticação
+                var newToken = await HandleTokenRefreshAsync(teamId, error);
+                if (newToken != null)
+                {
+                    // Retry com o novo token
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
+                    var retryResponse = await client.PostAsync(
+                        "https://slack.com/api/chat.postMessage",
+                        JsonContent.Create(payload)
+                    );
+
+                    var retryJson = await retryResponse.Content.ReadAsStringAsync();
+                    var retryResult = JsonSerializer.Deserialize<JsonElement>(retryJson);
+
+                    if (retryResult.GetProperty("ok").GetBoolean())
+                    {
+                        var messageTs = retryResult.TryGetProperty("ts", out var tsProp) ? tsProp.GetString() : null;
+                        return new Models.Slack.SendMessageResult(
+                            Success: true,
+                            MessageTs: messageTs
+                        );
+                    }
+                    else
+                    {
+                        var retryError = retryResult.TryGetProperty("error", out var retryErrProp) 
+                            ? retryErrProp.GetString() 
+                            : "desconhecido";
+                        return new Models.Slack.SendMessageResult(
+                            Success: false,
+                            Error: retryError
+                        );
+                    }
+                }
+
+                return new Models.Slack.SendMessageResult(
+                    Success: false,
+                    Error: error
+                );
+            }
+
+            var msgTs = result.TryGetProperty("ts", out var tsProperty) ? tsProperty.GetString() : null;
+            return new Models.Slack.SendMessageResult(
+                Success: true,
+                MessageTs: msgTs
+            );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] Erro ao enviar mensagem: {ex.Message}");
+            return new Models.Slack.SendMessageResult(
+                Success: false,
+                Error: $"Exceção: {ex.Message}"
+            );
+        }
+    }
+
+    public async Task<Models.Slack.DeleteMessageResult> DeleteMessageAsync(string teamId, string channel, string messageTs)
+    {
+        // Buscar token do repositório
+        var tokenData = await _tokenRepository.GetTokenAsync(teamId);
+        if (tokenData == null)
+        {
+            return new Models.Slack.DeleteMessageResult(
+                Success: false,
+                Error: "Token não encontrado para o workspace"
+            );
+        }
+
+        var token = tokenData.AccessToken;
+        var client = _httpClientFactory.CreateClient();
+
+        var payload = new
+        {
+            channel = channel,
+            ts = messageTs
+        };
+
+        try
+        {
+            // Primeira tentativa
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var response = await client.PostAsync(
+                "https://slack.com/api/chat.delete",
+                JsonContent.Create(payload)
+            );
+
+            var json = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<JsonElement>(json);
+
+            if (!result.GetProperty("ok").GetBoolean())
+            {
+                var error = result.TryGetProperty("error", out var errProp) ? errProp.GetString() : "desconhecido";
+
+                // Tentar refresh do token se for erro de autenticação
+                var newToken = await HandleTokenRefreshAsync(teamId, error);
+                if (newToken != null)
+                {
+                    // Retry com o novo token
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", newToken);
+                    var retryResponse = await client.PostAsync(
+                        "https://slack.com/api/chat.delete",
+                        JsonContent.Create(payload)
+                    );
+
+                    var retryJson = await retryResponse.Content.ReadAsStringAsync();
+                    var retryResult = JsonSerializer.Deserialize<JsonElement>(retryJson);
+
+                    if (retryResult.GetProperty("ok").GetBoolean())
+                    {
+                        return new Models.Slack.DeleteMessageResult(Success: true);
+                    }
+                    else
+                    {
+                        var retryError = retryResult.TryGetProperty("error", out var retryErrProp) 
+                            ? retryErrProp.GetString() 
+                            : "desconhecido";
+                        return new Models.Slack.DeleteMessageResult(Success: false, Error: retryError);
+                    }
+                }
+
+                return new Models.Slack.DeleteMessageResult(Success: false, Error: error);
+            }
+
+            return new Models.Slack.DeleteMessageResult(Success: true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] Erro ao apagar mensagem: {ex.Message}");
+            return new Models.Slack.DeleteMessageResult(Success: false, Error: $"Exceção: {ex.Message}");
+        }
+    }
 }
 
