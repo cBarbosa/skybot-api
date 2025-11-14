@@ -2,7 +2,9 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using FluentValidation;
 using Microsoft.AspNetCore.Http;
+using skybot.Core.Helpers;
 using skybot.Core.Interfaces;
+using skybot.Core.Models.Commands;
 using skybot.Core.Models.Common;
 using skybot.Core.Models.Reminders;
 using skybot.Core.Services.Infrastructure;
@@ -19,6 +21,8 @@ public class SlackInteractiveService : ISlackInteractiveService
     private readonly ICacheService _cacheService;
     private readonly ISlackBlockBuilderService _blockBuilder;
     private readonly IValidator<ReminderModalSubmission> _modalValidator;
+    private readonly ICommandInteractionRepository _commandInteractionRepo;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
     public SlackInteractiveService(
         ISlackService slackService,
@@ -27,7 +31,9 @@ public class SlackInteractiveService : ISlackInteractiveService
         IAIService aiService,
         ICacheService cacheService,
         ISlackBlockBuilderService blockBuilder,
-        IValidator<ReminderModalSubmission> modalValidator)
+        IValidator<ReminderModalSubmission> modalValidator,
+        ICommandInteractionRepository commandInteractionRepo,
+        IHttpContextAccessor httpContextAccessor)
     {
         _slackService = slackService;
         _tokenRepository = tokenRepository;
@@ -36,6 +42,8 @@ public class SlackInteractiveService : ISlackInteractiveService
         _cacheService = cacheService;
         _blockBuilder = blockBuilder;
         _modalValidator = modalValidator;
+        _commandInteractionRepo = commandInteractionRepo;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<ServiceResult> HandleInteractiveEventAsync(HttpRequest request)
@@ -105,6 +113,9 @@ public class SlackInteractiveService : ISlackInteractiveService
             return ServiceResult.Ok();
         }
 
+        // Registra a interação com o botão
+        await LogInteractiveActionAsync("confirm_ai_yes", InteractionType.BUTTON, user, channel, pending.Value.ThreadTs, true);
+
         _cacheService.RemovePendingAIMessage(attemptKey);
         _cacheService.ResetCommandAttempts(attemptKey);
         _cacheService.SetThreadAIMode(attemptKey);
@@ -144,6 +155,9 @@ public class SlackInteractiveService : ISlackInteractiveService
             return ServiceResult.Ok();
         }
 
+        // Registra a interação com o botão
+        await LogInteractiveActionAsync("confirm_ai_no", InteractionType.BUTTON, user, channel, pending.Value.ThreadTs, true);
+
         _cacheService.RemovePendingAIMessage(attemptKey);
         _cacheService.ResetCommandAttempts(attemptKey);
         _cacheService.RemoveThreadAIMode(attemptKey);
@@ -161,6 +175,9 @@ public class SlackInteractiveService : ISlackInteractiveService
 
     private async Task<ServiceResult> HandleViewMyRemindersAsync(string teamId, string userId, string accessToken, string channel)
     {
+        // Registra a interação com o botão
+        await LogInteractiveActionAsync("view_my_reminders", InteractionType.BUTTON, userId, channel, null, true, teamId);
+
         var reminders = await _reminderRepository.GetRemindersByUserAsync(teamId, userId, includeSent: false);
 
         if (reminders.Count == 0)
@@ -185,6 +202,13 @@ public class SlackInteractiveService : ISlackInteractiveService
 
     private async Task<ServiceResult> HandleOpenReminderModalAsync(string actionId, JsonElement payload, string accessToken)
     {
+        var teamId = payload.GetProperty("team").GetProperty("id").GetString();
+        var user = payload.GetProperty("user").GetProperty("id").GetString();
+        var channel = payload.TryGetProperty("channel", out var ch) ? ch.GetProperty("id").GetString() : user;
+
+        // Registra a interação com o botão
+        await LogInteractiveActionAsync(actionId, InteractionType.BUTTON, user ?? "unknown", channel ?? "unknown", null, true, teamId);
+
         var isForSomeone = actionId == "send_reminder_modal";
         var triggerId = payload.GetProperty("trigger_id").GetString();
 
@@ -309,6 +333,50 @@ public class SlackInteractiveService : ISlackInteractiveService
             nameof(ReminderModalSubmission.TargetUserId) => "user_select",
             _ => "general"
         };
+    }
+
+    private async Task LogInteractiveActionAsync(
+        string actionId,
+        InteractionType interactionType,
+        string userId,
+        string channel,
+        string? threadTs,
+        bool success,
+        string? teamId = null)
+    {
+        try
+        {
+            // Tenta extrair teamId do contexto se não foi fornecido
+            if (string.IsNullOrEmpty(teamId))
+            {
+                // Não podemos registrar sem teamId
+                return;
+            }
+
+            var httpContext = _httpContextAccessor.HttpContext;
+            var request = new CreateCommandInteractionRequest(
+                TeamId: teamId,
+                UserId: userId,
+                InteractionType: interactionType,
+                Command: null,
+                ActionId: actionId,
+                Arguments: null,
+                Channel: channel,
+                ThreadTs: threadTs,
+                MessageTs: DateTime.UtcNow.Ticks.ToString(),
+                SourceIp: httpContext != null ? HttpContextHelper.GetSourceIp(httpContext) : null,
+                UserAgent: httpContext != null ? HttpContextHelper.GetUserAgent(httpContext) : null,
+                Success: success,
+                ErrorMessage: null
+            );
+
+            await _commandInteractionRepo.CreateAsync(request);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ERROR] Falha ao registrar interação interativa: {ex.Message}");
+            // Não propaga o erro para não afetar a funcionalidade
+        }
     }
 }
 

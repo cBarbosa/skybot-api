@@ -88,6 +88,7 @@ public class SlackIntegrationService : ISlackIntegrationService
         var threadTs = evt.ThreadTs ?? evt.Ts;
         
         // Verifica se a thread está em modo agente virtual
+        // ThreadKey formato: TeamId_UserId_Channel_ThreadTs
         var threadKey = $"{teamId}_{evt.User}_{evt.Channel}_{threadTs}";
         var isInAIMode = _cacheService.IsThreadInAIMode(threadKey);
         
