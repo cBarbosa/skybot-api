@@ -97,6 +97,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IReminderRepository, ReminderRepository>();
         services.AddScoped<ISlackTokenRepository, SlackTokenRepository>();
         services.AddScoped<ITokenRefreshHistoryRepository, TokenRefreshHistoryRepository>();
+        services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
+        services.AddScoped<IMessageLogRepository, MessageLogRepository>();
+        services.AddScoped<IWorkspaceSettingsRepository, WorkspaceSettingsRepository>();
 
         // Serviços de infraestrutura - Scoped
         services.AddScoped<ISlackService, SlackService>();
@@ -115,13 +118,15 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISlackInteractiveService, SlackInteractiveService>();
         services.AddScoped<ISlackBlockBuilderService, SlackBlockBuilderService>();
 
-        // Background Service
+        // Background Services
         services.AddHostedService<ReminderBackgroundService>();
+        services.AddHostedService<ReportBackgroundService>();
 
         // Validators
         services.AddScoped<IValidator<skybot.Core.Models.CreateReminderRequest>, CreateReminderRequestValidator>();
         services.AddScoped<IValidator<skybot.Core.Models.CreateChannelRequest>, CreateChannelRequestValidator>();
         services.AddScoped<IValidator<skybot.Core.Models.Reminders.ReminderModalSubmission>, ReminderModalSubmissionValidator>();
+        services.AddScoped<IValidator<skybot.Core.Models.Slack.SendMessageRequest>, SendMessageRequestValidator>();
 
         return services;
     }

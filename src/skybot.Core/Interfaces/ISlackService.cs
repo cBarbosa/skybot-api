@@ -1,4 +1,5 @@
 using skybot.Core.Models;
+using skybot.Core.Models.Slack;
 
 namespace skybot.Core.Interfaces;
 
@@ -9,5 +10,7 @@ public interface ISlackService
     Task<ListMembersResult> ListChannelMembersAsync(string teamId, string channelId, HttpClient? httpClient = null, int maxMembers = 10);
     Task<string?> GetTeamIdFromTokenAsync(string token, HttpClient? httpClient = null);
     Task<bool> SendBlocksAsync(string token, string channel, object[] blocks, string? threadTs = null);
+    Task<SendMessageResult> SendMessageAsync(string teamId, SendMessageRequest request);
+    Task<DeleteMessageResult> DeleteMessageAsync(string teamId, string channel, string messageTs);
 }
 
