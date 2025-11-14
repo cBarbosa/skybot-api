@@ -44,6 +44,7 @@ public class ReminderBackgroundService : BackgroundService
         var reminderRepository = scope.ServiceProvider.GetRequiredService<IReminderRepository>();
         var slackService = scope.ServiceProvider.GetRequiredService<ISlackService>();
         var tokenRepository = scope.ServiceProvider.GetRequiredService<ISlackTokenRepository>();
+        var tokenRefreshService = scope.ServiceProvider.GetService<ISlackTokenRefreshService>();
 
         // Usa hora atual em UTC para buscar no banco (que está em UTC)
         var utcNow = DateTime.UtcNow;
@@ -117,6 +118,18 @@ public class ReminderBackgroundService : BackgroundService
                 var dueDateBr = reminder.DueDate.HasValue 
                     ? TimezoneHelper.ConvertToBrazilianTime(reminder.DueDate.Value)
                     : TimezoneHelper.GetBrazilianTime();
+
+                // Tenta refresh do token se necessário antes de enviar
+                if (tokenRefreshService != null && !string.IsNullOrEmpty(correctTeamId))
+                {
+                    await tokenRefreshService.RefreshTokenIfNeededAsync(correctTeamId);
+                    // Busca o token atualizado
+                    var updatedToken = await tokenRepository.GetTokenAsync(correctTeamId);
+                    if (updatedToken != null)
+                    {
+                        tokenToUse = updatedToken.AccessToken;
+                    }
+                }
 
                 // Determina onde enviar: ChannelId ou UserId (DM)
                 var channel = reminder.ChannelId ?? reminder.UserId!;

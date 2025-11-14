@@ -16,7 +16,7 @@ public class SlackTokenRepository : ISlackTokenRepository
             ?? throw new InvalidOperationException("Connection string não configurada");
     }
 
-    public async Task StoreTokenAsync(string accessToken, string teamId, string teamName)
+    public async Task StoreTokenAsync(string accessToken, string? refreshToken, string teamId, string teamName)
     {
         await using var connection = new MySqlConnection(_connectionString);
 
@@ -29,16 +29,24 @@ public class SlackTokenRepository : ISlackTokenRepository
         {
             // Atualiza o token existente
             await connection.ExecuteAsync(
-                "UPDATE SlackTokens SET AccessToken = @AccessToken, TeamName = @TeamName, UpdatedAt = CURRENT_TIMESTAMP WHERE TeamId = @TeamId",
-                new { TeamId = teamId, TeamName = teamName, AccessToken = accessToken });
+                "UPDATE SlackTokens SET AccessToken = @AccessToken, RefreshToken = @RefreshToken, TeamName = @TeamName, UpdatedAt = CURRENT_TIMESTAMP WHERE TeamId = @TeamId",
+                new { TeamId = teamId, TeamName = teamName, AccessToken = accessToken, RefreshToken = refreshToken });
         }
         else
         {
             // Insere um novo token
             await connection.ExecuteAsync(
-                "INSERT INTO SlackTokens (TeamId, TeamName, AccessToken) VALUES (@TeamId, @TeamName, @AccessToken)",
-                new { TeamId = teamId, TeamName = teamName, AccessToken = accessToken });
+                "INSERT INTO SlackTokens (TeamId, TeamName, AccessToken, RefreshToken) VALUES (@TeamId, @TeamName, @AccessToken, @RefreshToken)",
+                new { TeamId = teamId, TeamName = teamName, AccessToken = accessToken, RefreshToken = refreshToken });
         }
+    }
+
+    public async Task UpdateTokenAsync(string teamId, string accessToken, string? refreshToken)
+    {
+        await using var connection = new MySqlConnection(_connectionString);
+        await connection.ExecuteAsync(
+            "UPDATE SlackTokens SET AccessToken = @AccessToken, RefreshToken = @RefreshToken, UpdatedAt = CURRENT_TIMESTAMP WHERE TeamId = @TeamId",
+            new { TeamId = teamId, AccessToken = accessToken, RefreshToken = refreshToken });
     }
 
     public async Task<SlackToken?> GetTokenAsync(string teamId)

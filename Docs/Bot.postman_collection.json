@@ -1,0 +1,498 @@
+{
+	"info": {
+		"_postman_id": "d35d70da-045f-4470-9657-ca68db1100e0",
+		"name": "Skybot API - Complete Collection",
+		"description": "Coleção completa de endpoints da API do Skybot - Bot de integração com Slack",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "32568959"
+	},
+	"item": [
+		{
+			"name": "Info & Health",
+			"item": [
+				{
+					"name": "API Info",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/",
+							"host": ["{{baseUrl}}"],
+							"path": [""]
+						},
+						"description": "Retorna informações da API (nome, versão, ambiente, timestamp)"
+					},
+					"response": []
+				},
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": ["{{baseUrl}}"],
+							"path": ["health"]
+						},
+						"description": "Verifica o status de saúde da aplicação e dependências"
+					},
+					"response": []
+				},
+				{
+					"name": "Liveness Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health/liveness",
+							"host": ["{{baseUrl}}"],
+							"path": ["health", "liveness"]
+						},
+						"description": "Verifica se a aplicação está viva (para Kubernetes/Docker)"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Slack Auth",
+			"item": [
+				{
+					"name": "Gerar Link de Instalação",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/slack/install",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "install"]
+						},
+						"description": "Gera URL de instalação do app no Slack"
+					},
+					"response": []
+				},
+				{
+					"name": "OAuth Callback",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/slack/oauth?code=oauth_code_here&state=optional_state",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "oauth"],
+							"query": [
+								{
+									"key": "code",
+									"value": "oauth_code_here",
+									"description": "Código OAuth do Slack"
+								},
+								{
+									"key": "state",
+									"value": "optional_state",
+									"description": "State opcional para segurança"
+								}
+							]
+						},
+						"description": "Processa callback OAuth do Slack e armazena tokens (com refresh token)"
+					},
+					"response": []
+				},
+				{
+					"name": "Desconectar Team",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/slack/team/:teamId",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "team", ":teamId"],
+							"variable": [
+								{
+									"key": "teamId",
+									"value": "{{teamId}}",
+									"description": "ID do Team no Slack"
+								}
+							]
+						},
+						"description": "Revoga token e desconecta um team do Slack"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Slack Events",
+			"item": [
+				{
+					"name": "Processar Evento do Slack",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"team_id\": \"{{teamId}}\",\n  \"event_id\": \"Ev1234567890\",\n  \"event\": {\n    \"type\": \"message\",\n    \"user\": \"{{userId}}\",\n    \"text\": \"!ajuda\",\n    \"channel\": \"{{channelId}}\",\n    \"ts\": \"1234567890.123456\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/slack/events",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "events"]
+						},
+						"description": "Recebe e processa eventos do Slack (mensagens, menções, etc)"
+					},
+					"response": []
+				},
+				{
+					"name": "Processar Interação (Botões/Modais)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/x-www-form-urlencoded"
+							}
+						],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{
+									"key": "payload",
+									"value": "{\"type\":\"block_actions\",\"team\":{\"id\":\"{{teamId}}\"},\"user\":{\"id\":\"{{userId}}\"},\"actions\":[{\"action_id\":\"confirm_ai_yes\",\"value\":\"thread_key\"}]}",
+									"description": "Payload JSON serializado"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/slack/interactive",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "interactive"]
+						},
+						"description": "Processa interações do Slack (cliques em botões, envio de modais)"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Slack Channels",
+			"item": [
+				{
+					"name": "Listar Canais",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/slack/channels?teamId={{teamId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "channels"],
+							"query": [
+								{
+									"key": "teamId",
+									"value": "{{teamId}}",
+									"description": "ID do Team no Slack"
+								}
+							]
+						},
+						"description": "Lista canais públicos do workspace (com refresh token automático)"
+					},
+					"response": []
+				},
+				{
+					"name": "Criar Canal",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Team-Id",
+								"value": "{{teamId}}",
+								"type": "text",
+								"description": "ID do Team no Slack"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"Name\": \"novo-canal-teste\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/slack/channels",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "channels"]
+						},
+						"description": "Cria um novo canal público no Slack (com refresh token automático)"
+					},
+					"response": []
+				},
+				{
+					"name": "Listar Membros do Canal",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Team-Id",
+								"value": "{{teamId}}",
+								"type": "text",
+								"description": "ID do Team no Slack"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/slack/channels/:channelId/members",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "channels", ":channelId", "members"],
+							"variable": [
+								{
+									"key": "channelId",
+									"value": "{{channelId}}",
+									"description": "ID do canal no Slack"
+								}
+							]
+						},
+						"description": "Lista membros de um canal específico (até 50 membros)"
+					},
+					"response": []
+				},
+				{
+					"name": "Entrar em Canal",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/slack/join/:channelId?teamId={{teamId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "join", ":channelId"],
+							"query": [
+								{
+									"key": "teamId",
+									"value": "{{teamId}}",
+									"description": "ID do Team no Slack"
+								}
+							],
+							"variable": [
+								{
+									"key": "channelId",
+									"value": "{{channelId}}",
+									"description": "ID do canal para entrar"
+								}
+							]
+						},
+						"description": "Faz o bot entrar em um canal específico (com refresh token automático)"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Slack Users",
+			"item": [
+				{
+					"name": "Listar Usuários",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/slack/users?teamId={{teamId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "users"],
+							"query": [
+								{
+									"key": "teamId",
+									"value": "{{teamId}}",
+									"description": "ID do Team no Slack"
+								}
+							]
+						},
+						"description": "Lista todos os usuários do workspace (com refresh token automático)"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Slack Home",
+			"item": [
+				{
+					"name": "Publicar Home View",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/slack/home?teamId={{teamId}}&userId={{userId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "home"],
+							"query": [
+								{
+									"key": "teamId",
+									"value": "{{teamId}}",
+									"description": "ID do Team no Slack"
+								},
+								{
+									"key": "userId",
+									"value": "{{userId}}",
+									"description": "ID do usuário no Slack"
+								}
+							]
+						},
+						"description": "Publica/atualiza a Home tab do app para um usuário (com refresh token automático)"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Reminders",
+			"item": [
+				{
+					"name": "Listar Lembretes do Team",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Team-Id",
+								"value": "{{teamId}}",
+								"type": "text",
+								"description": "ID do Team no Slack (obrigatório)"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/slack/reminders",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "reminders"]
+						},
+						"description": "Lista todos os lembretes de um team"
+					},
+					"response": []
+				},
+				{
+					"name": "Listar Lembretes de um Usuário",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Team-Id",
+								"value": "{{teamId}}",
+								"type": "text",
+								"description": "ID do Team no Slack (obrigatório)"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/slack/reminders/user/:userId",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "reminders", "user", ":userId"],
+							"variable": [
+								{
+									"key": "userId",
+									"value": "{{userId}}",
+									"description": "ID do usuário no Slack"
+								}
+							]
+						},
+						"description": "Lista lembretes de um usuário específico"
+					},
+					"response": []
+				},
+				{
+					"name": "Criar Lembrete",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "X-Team-Id",
+								"value": "{{teamId}}",
+								"type": "text",
+								"description": "ID do Team no Slack (obrigatório)"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"UserId\": \"{{userId}}\",\n  \"Message\": \"Reunião importante às 15h\",\n  \"DueDate\": \"2025-11-15T15:00:00\",\n  \"ChannelId\": \"{{channelId}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/slack/reminders",
+							"host": ["{{baseUrl}}"],
+							"path": ["slack", "reminders"]
+						},
+						"description": "Cria um novo lembrete. DueDate em horário de Brasília (GMT-3). ChannelId é opcional."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					"// Script pré-requisição global",
+					"console.log('Executando request para:', pm.request.url.toString());"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					"// Testes globais",
+					"pm.test('Status code is 200 or 201', function () {",
+					"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+					"});"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://skyapi.skymedia.com.br",
+			"type": "string"
+		},
+		{
+			"key": "teamId",
+			"value": "T09K2BS0A65",
+			"type": "string",
+			"description": "ID do Team no Slack"
+		},
+		{
+			"key": "userId",
+			"value": "U09K48KPT41",
+			"type": "string",
+			"description": "ID do Usuário no Slack"
+		},
+		{
+			"key": "channelId",
+			"value": "C09KM8W0MST",
+			"type": "string",
+			"description": "ID do Canal no Slack"
+		}
+	]
+}
