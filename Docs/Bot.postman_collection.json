@@ -1,11 +1,11 @@
 {
 	"info": {
-		"_postman_id": "776b9378-ac3d-4a4e-b713-15d1363f9ebe",
+		"_postman_id": "7f4e6c21-1cdd-479b-99ad-3e4a297c295b",
 		"name": "Skybot API - Complete Collection",
 		"description": "Coleção completa de endpoints da API do Skybot - Bot de integração com Slack\n\n## Autenticação\n\nA maioria dos endpoints requer autenticação via API Key no header `X-Api-Key`.\n\n**Endpoints públicos (sem autenticação):**\n- `/` - API Info\n- `/health` - Health checks\n- `/slack/install` - Gerar link de instalação\n- `/slack/oauth` - OAuth callback\n- `/slack/events` - Eventos do Slack\n- `/slack/interactive` - Interações do Slack\n\n**Endpoints protegidos:**\nTodos os outros endpoints requerem o header `X-Api-Key` com uma chave válida.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
 		"_exporter_id": "26022166",
-		"_collection_link": "https://skymedia-tech.postman.co/workspace/Team-Workspace~0edd2130-40d8-46df-80f3-883c36768914/collection/26022166-776b9378-ac3d-4a4e-b713-15d1363f9ebe?action=share&source=collection_link&creator=26022166"
+		"_collection_link": "https://skymedia-tech.postman.co/workspace/Team-Workspace~0edd2130-40d8-46df-80f3-883c36768914/collection/26022166-7f4e6c21-1cdd-479b-99ad-3e4a297c295b?action=share&source=collection_link&creator=26022166"
 	},
 	"item": [
 		{
@@ -42,7 +42,7 @@
 							},
 							"status": "OK",
 							"code": 200,
-							"_postman_previewlanguage": null,
+							"_postman_previewlanguage": "Text",
 							"header": [
 								{
 									"key": "Content-Type",
@@ -262,7 +262,7 @@
 							},
 							"status": "OK",
 							"code": 200,
-							"_postman_previewlanguage": null,
+							"_postman_previewlanguage": "Text",
 							"header": [
 								{
 									"key": "Content-Type",
@@ -380,12 +380,12 @@
 				},
 				{
 					"name": "OAuth Callback",
-			"request": {
-				"auth": {
-					"type": "noauth"
-				},
-				"method": "GET",
-				"header": [],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [],
 						"url": {
 							"raw": "{{baseUrl{{environment}}}}/slack/oauth?code=oauth_code_here&state=optional_state",
 							"host": [
@@ -527,6 +527,463 @@
 			"name": "Slack Channels",
 			"item": [
 				{
+					"name": "Reports",
+					"item": [
+						{
+							"name": "Relatório Diário",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/messages/reports/daily?date=2025-11-14",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"messages",
+										"reports",
+										"daily"
+									],
+									"query": [
+										{
+											"key": "date",
+											"value": "2025-11-14",
+											"description": "Data do relatório (opcional, padrão: hoje)"
+										}
+									]
+								},
+								"description": "Relatório de mensagens enviadas em um dia específico\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros:**\n- `date` (opcional): Data no formato YYYY-MM-DD. Se omitido, usa a data atual.\n\n**Resposta:**\n```json\n{\n  \"date\": \"2025-11-14\",\n  \"statistics\": {\n    \"CHANNEL\": 45,\n    \"USER\": 12,\n    \"GROUP\": 3\n  },\n  \"total\": 60\n}\n```"
+							},
+							"response": []
+						},
+						{
+							"name": "Relatório Semanal",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/messages/reports/weekly?startDate=2025-11-10",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"messages",
+										"reports",
+										"weekly"
+									],
+									"query": [
+										{
+											"key": "startDate",
+											"value": "2025-11-10",
+											"description": "Data de início (opcional, padrão: 7 dias atrás)"
+										}
+									]
+								},
+								"description": "Relatório de mensagens enviadas em uma semana (7 dias)\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros:**\n- `startDate` (opcional): Data de início no formato YYYY-MM-DD. Se omitido, usa 7 dias atrás.\n\n**Resposta:**\n```json\n{\n  \"startDate\": \"2025-11-07\",\n  \"endDate\": \"2025-11-14\",\n  \"dailyStatistics\": {\n    \"2025-11-07\": 45,\n    \"2025-11-08\": 52,\n    \"2025-11-09\": 38\n  },\n  \"total\": 285\n}\n```"
+							},
+							"response": []
+						},
+						{
+							"name": "Relatório Mensal",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/messages/reports/monthly?year=2025&month=11",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"messages",
+										"reports",
+										"monthly"
+									],
+									"query": [
+										{
+											"key": "year",
+											"value": "2025",
+											"description": "Ano (opcional, padrão: ano atual)"
+										},
+										{
+											"key": "month",
+											"value": "11",
+											"description": "Mês (1-12) (opcional, padrão: mês atual)"
+										}
+									]
+								},
+								"description": "Relatório de mensagens enviadas em um mês específico\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros:**\n- `year` (opcional): Ano. Se omitido, usa o ano atual.\n- `month` (opcional): Mês (1-12). Se omitido, usa o mês atual.\n\n**Resposta:**\n```json\n{\n  \"year\": 2025,\n  \"month\": 11,\n  \"dailyStatistics\": {\n    \"1\": 45,\n    \"2\": 52,\n    \"3\": 38,\n    \"...\": \"...\"\n  },\n  \"total\": 1245\n}\n```"
+							},
+							"response": []
+						},
+						{
+							"name": "Auditoria de Mensagens",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/messages/logs/audit?ip=&apiKeyName=",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"messages",
+										"logs",
+										"audit"
+									],
+									"query": [
+										{
+											"key": "startDate",
+											"value": "2025-11-14",
+											"description": "Data de início (opcional, padrão: 7 dias atrás)",
+											"disabled": true
+										},
+										{
+											"key": "endDate",
+											"value": "2025-11-14",
+											"description": "Data de fim (opcional, padrão: hoje)",
+											"disabled": true
+										},
+										{
+											"key": "ip",
+											"value": "",
+											"description": "Filtrar por IP específico (opcional)"
+										},
+										{
+											"key": "apiKeyName",
+											"value": "",
+											"description": "Filtrar por nome da API Key (opcional)"
+										}
+									]
+								},
+								"description": "Log de auditoria de mensagens enviadas com informações detalhadas\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros (todos opcionais):**\n- `startDate`: Data de início (padrão: 7 dias atrás)\n- `endDate`: Data de fim (padrão: hoje)\n- `ip`: Filtrar por IP de origem\n- `apiKeyName`: Filtrar por nome da API Key\n\n**Resposta:**\n```json\n{\n  \"count\": 150,\n  \"logs\": [\n    {\n      \"messageTs\": \"1731596040.123456\",\n      \"channel\": \"C09KM8W0MST\",\n      \"destinationType\": \"CHANNEL\",\n      \"sentAt\": \"2025-11-14T10:30:00\",\n      \"sourceIp\": \"192.168.1.100\",\n      \"forwardedFor\": \"203.0.113.42\",\n      \"userAgent\": \"PostmanRuntime/7.32.3\",\n      \"apiKeyName\": \"Integração Produção\",\n      \"status\": \"SENT\"\n    }\n  ]\n}\n```"
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Messages",
+					"item": [
+						{
+							"name": "Enviar Mensagem",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "POST",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"destinationType\": \"CHANNEL\",\n  \"destinationId\": \"{{channelId}}\",\n  \"text\": \"Olá! Esta é uma mensagem de teste enviada via API. 🚀\\n\\n*Suporta markdown:* _itálico_, ~tachado~\",\n  \"threadTs\": null\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/messages",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"messages"
+									]
+								},
+								"description": "Envia mensagem para um canal, usuário ou grupo no Slack\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros obrigatórios:**\n- `destinationType` (string): Tipo de destino\n  - `CHANNEL` - Canal público/privado (ID começa com C)\n  - `USER` - Usuário via DM (ID começa com U)\n  - `GROUP` - Grupo/Conversa (ID começa com G)\n- `destinationId` (string): ID do destino no Slack\n  - Exemplo canal: `C09KM8W0MST`\n  - Exemplo usuário: `U09K48KPT41`\n  - Exemplo grupo: `G1234567890`\n\n**Conteúdo (escolha UM):**\n- `text` (string): Mensagem em texto simples com suporte a markdown do Slack\n  - _itálico_, *negrito*, ~tachado~\n  - Máximo: 4000 caracteres\n- `blocks` (array): Array de blocos Block Kit para mensagens ricas\n  - Ver: https://api.slack.com/block-kit\n\n**Opcional:**\n- `threadTs` (string): Timestamp de mensagem para responder em thread\n\n**Refresh automático:** Se o token do Slack expirar, o sistema automaticamente renova e tenta novamente.\n\n**Resposta de sucesso:**\n```json\n{\n  \"success\": true,\n  \"messageTs\": \"1234567890.123456\",\n  \"requestId\": \"61f3aa06445f4dbaac108aa235f84f02\",\n  \"message\": \"Mensagem enviada com sucesso\"\n}\n```\n\n**Campos da resposta:**\n- `messageTs`: Timestamp único da mensagem no Slack (use para deletar/referenciar)\n- `requestId`: ID único da requisição para auditoria e rastreamento"
+							},
+							"response": [
+								{
+									"name": "Exemplo: Mensagem Simples",
+									"originalRequest": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "X-Api-Key",
+												"value": "{{apiKey}}",
+												"type": "text"
+											},
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"destinationType\": \"CHANNEL\",\n  \"destinationId\": \"C09KM8W0MST\",\n  \"text\": \"Olá! Mensagem simples com *markdown*\"\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{baseUrl{{environment}}}}/slack/messages",
+											"host": [
+												"{{baseUrl{{environment}}}}"
+											],
+											"path": [
+												"slack",
+												"messages"
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": "json",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/json"
+										}
+									],
+									"cookie": [],
+									"body": "{\n  \"success\": true,\n  \"messageTs\": \"1731596040.123456\",\n  \"requestId\": \"61f3aa06445f4dbaac108aa235f84f02\",\n  \"message\": \"Mensagem enviada com sucesso\"\n}"
+								},
+								{
+									"name": "Exemplo: Block Kit",
+									"originalRequest": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "X-Api-Key",
+												"value": "{{apiKey}}",
+												"type": "text"
+											},
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"destinationType\": \"CHANNEL\",\n  \"destinationId\": \"C09KM8W0MST\",\n  \"blocks\": [\n    {\n      \"type\": \"header\",\n      \"text\": {\n        \"type\": \"plain_text\",\n        \"text\": \"📊 Relatório Diário\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Status:* ✅ Tudo operacional\\n*Uptime:* 99.9%\\n*Requests:* 1.2M\"\n      }\n    },\n    {\n      \"type\": \"divider\"\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"Veja mais detalhes no dashboard.\"\n      },\n      \"accessory\": {\n        \"type\": \"button\",\n        \"text\": {\n          \"type\": \"plain_text\",\n          \"text\": \"Abrir Dashboard\"\n        },\n        \"url\": \"https://exemplo.com/dashboard\"\n      }\n    }\n  ]\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{baseUrl{{environment}}}}/slack/messages",
+											"host": [
+												"{{baseUrl{{environment}}}}"
+											],
+											"path": [
+												"slack",
+												"messages"
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": "json",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/json"
+										}
+									],
+									"cookie": [],
+									"body": "{\n  \"success\": true,\n  \"messageTs\": \"1731596055.234567\",\n  \"requestId\": \"a7b2c4e8f9d3456a8c1234567890abcd\",\n  \"message\": \"Mensagem enviada com sucesso\"\n}"
+								},
+								{
+									"name": "Exemplo: DM para Usuário",
+									"originalRequest": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "X-Api-Key",
+												"value": "{{apiKey}}",
+												"type": "text"
+											},
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"destinationType\": \"USER\",\n  \"destinationId\": \"U09K48KPT41\",\n  \"text\": \"Olá! Esta é uma mensagem direta.\"\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{baseUrl{{environment}}}}/slack/messages",
+											"host": [
+												"{{baseUrl{{environment}}}}"
+											],
+											"path": [
+												"slack",
+												"messages"
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": "json",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/json"
+										}
+									],
+									"cookie": [],
+									"body": "{\n  \"success\": true,\n  \"messageTs\": \"1731596065.345678\",\n  \"requestId\": \"b9c8d7e6f5a4321098765432bcdef012\",\n  \"message\": \"Mensagem enviada com sucesso\"\n}"
+								},
+								{
+									"name": "Exemplo: Resposta em Thread",
+									"originalRequest": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "X-Api-Key",
+												"value": "{{apiKey}}",
+												"type": "text"
+											},
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"destinationType\": \"CHANNEL\",\n  \"destinationId\": \"C09KM8W0MST\",\n  \"text\": \"Esta é uma resposta na thread!\",\n  \"threadTs\": \"1731595000.123456\"\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{baseUrl{{environment}}}}/slack/messages",
+											"host": [
+												"{{baseUrl{{environment}}}}"
+											],
+											"path": [
+												"slack",
+												"messages"
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": "json",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/json"
+										}
+									],
+									"cookie": [],
+									"body": "{\n  \"success\": true,\n  \"messageTs\": \"1731596075.456789\",\n  \"requestId\": \"e3f2a1d0c9b8765432109876fedcba98\",\n  \"message\": \"Mensagem enviada com sucesso\"\n}"
+								}
+							]
+						},
+						{
+							"name": "Apagar Mensagem",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"channel\": \"{{channelId}}\",\n  \"messageTs\": \"1731596040.123456\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/messages",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"messages"
+									]
+								},
+								"description": "Apaga uma mensagem enviada pelo bot no Slack\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros obrigatórios:**\n- `channel` (string): ID do canal onde está a mensagem\n- `messageTs` (string): Timestamp da mensagem a ser apagada\n\n**Limitações:**\n- O bot só pode apagar mensagens que ele mesmo enviou\n- Não é possível apagar mensagens de outros usuários\n\n**Resposta de sucesso:**\n```json\n{\n  \"success\": true,\n  \"message\": \"Mensagem apagada com sucesso\"\n}\n```"
+							},
+							"response": []
+						}
+					]
+				},
+				{
 					"name": "Listar Canais",
 					"request": {
 						"auth": {
@@ -574,23 +1031,23 @@
 								"value": "application/json"
 							}
 						],
-				"body": {
-					"mode": "raw",
+						"body": {
+							"mode": "raw",
 							"raw": "{\n  \"Name\": \"novo-canal-teste\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
 							"raw": "{{baseUrl{{environment}}}}/slack/channels",
-					"host": [
-						"{{baseUrl{{environment}}}}"
-					],
-					"path": [
-						"slack",
-						"channels"
+							"host": [
+								"{{baseUrl{{environment}}}}"
+							],
+							"path": [
+								"slack",
+								"channels"
 							]
 						},
 						"description": "Cria um novo canal público no Slack\n\n**Autenticação:** Requer header `X-Api-Key`\n\nO TeamId é identificado automaticamente através da API Key.\n\n**Refresh automático:** Se o token do Slack expirar, o sistema automaticamente renova e tenta novamente."
@@ -605,7 +1062,7 @@
 						},
 						"method": "GET",
 						"header": [
-						{
+							{
 								"key": "X-Api-Key",
 								"value": "{{apiKey}}",
 								"description": "API Key para autenticação",
@@ -671,282 +1128,559 @@
 						"description": "Faz o bot entrar em um canal específico\n\n**Autenticação:** Requer header `X-Api-Key`\n\nO TeamId é identificado automaticamente através da API Key.\n\n**Refresh automático:** Se o token do Slack expirar, o sistema automaticamente renova e tenta novamente."
 					},
 					"response": []
-				},
+				}
+			],
+			"description": "Operações com canais do Slack (todos requerem autenticação via API Key)"
+		},
+		{
+			"name": "Command Interactions & Reports",
+			"item": [
 				{
-					"name": "Enviar Mensagem",
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "X-Api-Key",
-								"value": "{{apiKey}}",
-								"description": "API Key para autenticação",
-								"type": "text"
-							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"destinationType\": \"CHANNEL\",\n  \"destinationId\": \"{{channelId}}\",\n  \"text\": \"Olá! Esta é uma mensagem de teste enviada via API. 🚀\\n\\n*Suporta markdown:* _itálico_, ~tachado~\",\n  \"threadTs\": null\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{baseUrl{{environment}}}}/slack/messages",
-							"host": [
-								"{{baseUrl{{environment}}}}"
-							],
-							"path": [
-								"slack",
-								"messages"
-							]
-						},
-						"description": "Envia mensagem para um canal, usuário ou grupo no Slack\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros obrigatórios:**\n- `destinationType` (string): Tipo de destino\n  - `CHANNEL` - Canal público/privado (ID começa com C)\n  - `USER` - Usuário via DM (ID começa com U)\n  - `GROUP` - Grupo/Conversa (ID começa com G)\n- `destinationId` (string): ID do destino no Slack\n  - Exemplo canal: `C09KM8W0MST`\n  - Exemplo usuário: `U09K48KPT41`\n  - Exemplo grupo: `G1234567890`\n\n**Conteúdo (escolha UM):**\n- `text` (string): Mensagem em texto simples com suporte a markdown do Slack\n  - _itálico_, *negrito*, ~tachado~\n  - Máximo: 4000 caracteres\n- `blocks` (array): Array de blocos Block Kit para mensagens ricas\n  - Ver: https://api.slack.com/block-kit\n\n**Opcional:**\n- `threadTs` (string): Timestamp de mensagem para responder em thread\n\n**Refresh automático:** Se o token do Slack expirar, o sistema automaticamente renova e tenta novamente.\n\n**Resposta de sucesso:**\n```json\n{\n  \"success\": true,\n  \"messageTs\": \"1234567890.123456\",\n  \"requestId\": \"61f3aa06445f4dbaac108aa235f84f02\",\n  \"message\": \"Mensagem enviada com sucesso\"\n}\n```\n\n**Campos da resposta:**\n- `messageTs`: Timestamp único da mensagem no Slack (use para deletar/referenciar)\n- `requestId`: ID único da requisição para auditoria e rastreamento"
-					},
-					"response": [
+					"name": "Reports",
+					"item": [
 						{
-							"name": "Exemplo: Mensagem Simples",
-							"originalRequest": {
-								"method": "POST",
+							"name": "Relatório Diário de Comandos",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
 								"header": [
 									{
 										"key": "X-Api-Key",
 										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
 										"type": "text"
-									},
-									{
-										"key": "Content-Type",
-										"value": "application/json"
 									}
 								],
-								"body": {
-									"mode": "raw",
-									"raw": "{\n  \"destinationType\": \"CHANNEL\",\n  \"destinationId\": \"C09KM8W0MST\",\n  \"text\": \"Olá! Mensagem simples com *markdown*\"\n}",
-									"options": {
-										"raw": {
-											"language": "json"
-										}
-									}
-								},
 								"url": {
-									"raw": "{{baseUrl{{environment}}}}/slack/messages",
+									"raw": "{{baseUrl{{environment}}}}/slack/commands/reports/daily?date=2025-11-14",
 									"host": [
 										"{{baseUrl{{environment}}}}"
 									],
 									"path": [
 										"slack",
-										"messages"
+										"commands",
+										"reports",
+										"daily"
+									],
+									"query": [
+										{
+											"key": "date",
+											"value": "2025-11-14",
+											"description": "Data do relatório (opcional, padrão: ontem)"
+										}
 									]
-								}
+								},
+								"description": "Relatório de interações com comandos em um dia específico\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros:**\n- `date` (opcional): Data no formato YYYY-MM-DD. Se omitido, usa o dia anterior.\n\n**Resposta:**\n```json\n{\n  \"date\": \"2025-11-14\",\n  \"statistics\": {\n    \"!ajuda\": 45,\n    \"!ping\": 23,\n    \"!lembrete\": 12\n  },\n  \"total\": 80\n}\n```"
 							},
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-						"cookie": [],
-						"body": "{\n  \"success\": true,\n  \"messageTs\": \"1731596040.123456\",\n  \"requestId\": \"61f3aa06445f4dbaac108aa235f84f02\",\n  \"message\": \"Mensagem enviada com sucesso\"\n}"
+							"response": []
 						},
 						{
-							"name": "Exemplo: Block Kit",
-							"originalRequest": {
-								"method": "POST",
+							"name": "Relatório Semanal de Comandos",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
 								"header": [
 									{
 										"key": "X-Api-Key",
 										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
 										"type": "text"
-									},
-									{
-										"key": "Content-Type",
-										"value": "application/json"
-						}
-								],
-								"body": {
-									"mode": "raw",
-									"raw": "{\n  \"destinationType\": \"CHANNEL\",\n  \"destinationId\": \"C09KM8W0MST\",\n  \"blocks\": [\n    {\n      \"type\": \"header\",\n      \"text\": {\n        \"type\": \"plain_text\",\n        \"text\": \"📊 Relatório Diário\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Status:* ✅ Tudo operacional\\n*Uptime:* 99.9%\\n*Requests:* 1.2M\"\n      }\n    },\n    {\n      \"type\": \"divider\"\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"Veja mais detalhes no dashboard.\"\n      },\n      \"accessory\": {\n        \"type\": \"button\",\n        \"text\": {\n          \"type\": \"plain_text\",\n          \"text\": \"Abrir Dashboard\"\n        },\n        \"url\": \"https://exemplo.com/dashboard\"\n      }\n    }\n  ]\n}",
-									"options": {
-										"raw": {
-											"language": "json"
-										}
 									}
-								},
+								],
 								"url": {
-									"raw": "{{baseUrl{{environment}}}}/slack/messages",
+									"raw": "{{baseUrl{{environment}}}}/slack/commands/reports/weekly?startDate=2025-11-07",
 									"host": [
 										"{{baseUrl{{environment}}}}"
 									],
 									"path": [
 										"slack",
-										"messages"
+										"commands",
+										"reports",
+										"weekly"
+									],
+									"query": [
+										{
+											"key": "startDate",
+											"value": "2025-11-07",
+											"description": "Data de início (opcional, padrão: 7 dias atrás)"
+										}
 									]
-								}
+								},
+								"description": "Relatório de interações com comandos em uma semana (7 dias)\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros:**\n- `startDate` (opcional): Data de início no formato YYYY-MM-DD. Se omitido, usa 7 dias atrás.\n\n**Resposta:**\n```json\n{\n  \"startDate\": \"2025-11-07\",\n  \"endDate\": \"2025-11-14\",\n  \"dailyStatistics\": {\n    \"2025-11-07\": 45,\n    \"2025-11-08\": 52,\n    \"2025-11-09\": 38\n  },\n  \"total\": 285\n}\n```"
 							},
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-						"cookie": [],
-						"body": "{\n  \"success\": true,\n  \"messageTs\": \"1731596055.234567\",\n  \"requestId\": \"a7b2c4e8f9d3456a8c1234567890abcd\",\n  \"message\": \"Mensagem enviada com sucesso\"\n}"
+							"response": []
 						},
 						{
-							"name": "Exemplo: DM para Usuário",
-							"originalRequest": {
-								"method": "POST",
+							"name": "Relatório Mensal de Comandos",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
 								"header": [
 									{
 										"key": "X-Api-Key",
 										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
 										"type": "text"
-									},
-									{
-										"key": "Content-Type",
-										"value": "application/json"
 									}
 								],
-								"body": {
-									"mode": "raw",
-									"raw": "{\n  \"destinationType\": \"USER\",\n  \"destinationId\": \"U09K48KPT41\",\n  \"text\": \"Olá! Esta é uma mensagem direta.\"\n}",
-									"options": {
-										"raw": {
-											"language": "json"
-										}
-									}
-								},
 								"url": {
-									"raw": "{{baseUrl{{environment}}}}/slack/messages",
+									"raw": "{{baseUrl{{environment}}}}/slack/commands/reports/monthly?year=2025&month=11",
 									"host": [
 										"{{baseUrl{{environment}}}}"
 									],
 									"path": [
 										"slack",
-										"messages"
-									]
-								}
-							},
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-						"cookie": [],
-						"body": "{\n  \"success\": true,\n  \"messageTs\": \"1731596065.345678\",\n  \"requestId\": \"b9c8d7e6f5a4321098765432bcdef012\",\n  \"message\": \"Mensagem enviada com sucesso\"\n}"
-						},
-						{
-							"name": "Exemplo: Resposta em Thread",
-							"originalRequest": {
-								"method": "POST",
-								"header": [
-									{
-										"key": "X-Api-Key",
-										"value": "{{apiKey}}",
-										"type": "text"
-									},
-									{
-										"key": "Content-Type",
-										"value": "application/json"
-									}
-								],
-								"body": {
-									"mode": "raw",
-									"raw": "{\n  \"destinationType\": \"CHANNEL\",\n  \"destinationId\": \"C09KM8W0MST\",\n  \"text\": \"Esta é uma resposta na thread!\",\n  \"threadTs\": \"1731595000.123456\"\n}",
-									"options": {
-										"raw": {
-											"language": "json"
-										}
-									}
-								},
-								"url": {
-									"raw": "{{baseUrl{{environment}}}}/slack/messages",
-									"host": [
-										"{{baseUrl{{environment}}}}"
+										"commands",
+										"reports",
+										"monthly"
 									],
-									"path": [
-										"slack",
-										"messages"
+									"query": [
+										{
+											"key": "year",
+											"value": "2025",
+											"description": "Ano (opcional, padrão: ano atual)"
+										},
+										{
+											"key": "month",
+											"value": "11",
+											"description": "Mês (1-12) (opcional, padrão: mês atual)"
+										}
 									]
-								}
+								},
+								"description": "Relatório de interações com comandos em um mês específico\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros:**\n- `year` (opcional): Ano. Se omitido, usa o ano atual.\n- `month` (opcional): Mês (1-12). Se omitido, usa o mês atual.\n\n**Resposta:**\n```json\n{\n  \"year\": 2025,\n  \"month\": 11,\n  \"dailyStatistics\": {\n    \"1\": 45,\n    \"2\": 52,\n    \"3\": 38\n  },\n  \"total\": 1245\n}\n```"
 							},
-							"status": "OK",
-							"code": 200,
-							"_postman_previewlanguage": "json",
-							"header": [
-								{
-									"key": "Content-Type",
-									"value": "application/json"
-								}
-							],
-						"cookie": [],
-						"body": "{\n  \"success\": true,\n  \"messageTs\": \"1731596075.456789\",\n  \"requestId\": \"e3f2a1d0c9b8765432109876fedcba98\",\n  \"message\": \"Mensagem enviada com sucesso\"\n}"
+							"response": []
 						}
 					]
 				},
 				{
-					"name": "Apagar Mensagem",
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "X-Api-Key",
-								"value": "{{apiKey}}",
-								"description": "API Key para autenticação",
-								"type": "text"
+					"name": "Statistics",
+					"item": [
+						{
+							"name": "Estatísticas de Comandos",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/commands/stats?startDate=2025-10-15&endDate=2025-11-14",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"commands",
+										"stats"
+									],
+									"query": [
+										{
+											"key": "startDate",
+											"value": "2025-10-15",
+											"description": "Data de início (opcional, padrão: 30 dias atrás)"
+										},
+										{
+											"key": "endDate",
+											"value": "2025-11-14",
+											"description": "Data de fim (opcional, padrão: hoje)"
+										}
+									]
+								},
+								"description": "Estatísticas detalhadas de uso de comandos, botões e modais\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros (todos opcionais):**\n- `startDate`: Data de início no formato YYYY-MM-DD (padrão: 30 dias atrás)\n- `endDate`: Data de fim no formato YYYY-MM-DD (padrão: hoje)\n\n**Resposta:**\n```json\n{\n  \"period\": {\n    \"start\": \"2025-10-15\",\n    \"end\": \"2025-11-14\"\n  },\n  \"byCommand\": {\n    \"!ajuda\": 245,\n    \"!ping\": 156,\n    \"!lembrete\": 89\n  },\n  \"byType\": {\n    \"COMMAND\": 490,\n    \"BUTTON\": 234,\n    \"MODAL\": 45\n  },\n  \"totalInteractions\": 769\n}\n```"
 							},
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"channel\": \"{{channelId}}\",\n  \"messageTs\": \"1731596040.123456\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
+							"response": []
 						},
-						"url": {
-							"raw": "{{baseUrl{{environment}}}}/slack/messages",
-							"host": [
-								"{{baseUrl{{environment}}}}"
-							],
-							"path": [
-								"slack",
-								"messages"
-							]
+						{
+							"name": "Botões Mais Clicados",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/commands/stats/buttons?startDate=2025-10-15&endDate=2025-11-14&limit=10",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"commands",
+										"stats",
+										"buttons"
+									],
+									"query": [
+										{
+											"key": "startDate",
+											"value": "2025-10-15",
+											"description": "Data de início (opcional, padrão: 30 dias atrás)"
+										},
+										{
+											"key": "endDate",
+											"value": "2025-11-14",
+											"description": "Data de fim (opcional, padrão: hoje)"
+										},
+										{
+											"key": "limit",
+											"value": "10",
+											"description": "Quantidade de resultados (opcional, padrão: 10)"
+										}
+									]
+								},
+								"description": "Lista os botões mais clicados no período\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros (todos opcionais):**\n- `startDate`: Data de início (padrão: 30 dias atrás)\n- `endDate`: Data de fim (padrão: hoje)\n- `limit`: Quantidade de resultados (padrão: 10)\n\n**Resposta:**\n```json\n{\n  \"period\": {\n    \"start\": \"2025-10-15\",\n    \"end\": \"2025-11-14\"\n  },\n  \"topButtons\": [\n    {\n      \"actionId\": \"confirm_ai_yes\",\n      \"count\": 145\n    },\n    {\n      \"actionId\": \"view_my_reminders\",\n      \"count\": 89\n    }\n  ]\n}\n```"
+							},
+							"response": []
 						},
-						"description": "Apaga uma mensagem enviada pelo bot no Slack\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros obrigatórios:**\n- `channel` (string): ID do canal onde está a mensagem\n- `messageTs` (string): Timestamp da mensagem a ser apagada\n\n**Limitações:**\n- O bot só pode apagar mensagens que ele mesmo enviou\n- Não é possível apagar mensagens de outros usuários\n\n**Resposta de sucesso:**\n```json\n{\n  \"success\": true,\n  \"message\": \"Mensagem apagada com sucesso\"\n}\n```"
-					},
-					"response": []
+						{
+							"name": "Top Usuários Ativos",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/commands/stats/users/top?startDate=2025-10-15&endDate=2025-11-14&limit=10",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"commands",
+										"stats",
+										"users",
+										"top"
+									],
+									"query": [
+										{
+											"key": "startDate",
+											"value": "2025-10-15",
+											"description": "Data de início (opcional, padrão: 30 dias atrás)"
+										},
+										{
+											"key": "endDate",
+											"value": "2025-11-14",
+											"description": "Data de fim (opcional, padrão: hoje)"
+										},
+										{
+											"key": "limit",
+											"value": "10",
+											"description": "Quantidade de resultados (opcional, padrão: 10)"
+										}
+									]
+								},
+								"description": "Lista os usuários mais ativos (que mais interagiram com comandos/botões/modais)\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros (todos opcionais):**\n- `startDate`: Data de início (padrão: 30 dias atrás)\n- `endDate`: Data de fim (padrão: hoje)\n- `limit`: Quantidade de resultados (padrão: 10)\n\n**Resposta:**\n```json\n{\n  \"period\": {\n    \"start\": \"2025-10-15\",\n    \"end\": \"2025-11-14\"\n  },\n  \"topUsers\": [\n    {\n      \"userId\": \"U09K48KPT41\",\n      \"interactions\": 234\n    },\n    {\n      \"userId\": \"U09K48KPT42\",\n      \"interactions\": 189\n    }\n  ]\n}\n```"
+							},
+							"response": []
+						}
+					]
+				}
+			],
+			"description": "Estatísticas e relatórios de interações com comandos, botões e modais (todos requerem autenticação via API Key)"
+		},
+		{
+			"name": "AI Agent Reports",
+			"item": [
+				{
+					"name": "Reports",
+					"item": [
+						{
+							"name": "Relatório Diário do Agente IA",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/agent/reports/daily?date=2025-11-14",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"agent",
+										"reports",
+										"daily"
+									],
+									"query": [
+										{
+											"key": "date",
+											"value": "2025-11-14",
+											"description": "Data do relatório (opcional, padrão: ontem)"
+										}
+									]
+								},
+								"description": "Relatório de interações com o agente IA em um dia específico\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros:**\n- `date` (opcional): Data no formato YYYY-MM-DD. Se omitido, usa o dia anterior.\n\n**Resposta:**\n```json\n{\n  \"date\": \"2025-11-14\",\n  \"statisticsByProvider\": {\n    \"OpenAI\": 45,\n    \"Gemini\": 23\n  },\n  \"total\": 68\n}\n```"
+							},
+							"response": []
+						},
+						{
+							"name": "Relatório Semanal do Agente IA",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/agent/reports/weekly?startDate=2025-11-07",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"agent",
+										"reports",
+										"weekly"
+									],
+									"query": [
+										{
+											"key": "startDate",
+											"value": "2025-11-07",
+											"description": "Data de início (opcional, padrão: 7 dias atrás)"
+										}
+									]
+								},
+								"description": "Relatório de interações com o agente IA em uma semana (7 dias)\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros:**\n- `startDate` (opcional): Data de início no formato YYYY-MM-DD. Se omitido, usa 7 dias atrás.\n\n**Resposta:**\n```json\n{\n  \"startDate\": \"2025-11-07\",\n  \"endDate\": \"2025-11-14\",\n  \"dailyStatistics\": {\n    \"2025-11-07\": 45,\n    \"2025-11-08\": 52,\n    \"2025-11-09\": 38\n  },\n  \"total\": 285\n}\n```"
+							},
+							"response": []
+						},
+						{
+							"name": "Relatório Mensal do Agente IA",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/agent/reports/monthly?year=2025&month=11",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"agent",
+										"reports",
+										"monthly"
+									],
+									"query": [
+										{
+											"key": "year",
+											"value": "2025",
+											"description": "Ano (opcional, padrão: ano atual)"
+										},
+										{
+											"key": "month",
+											"value": "11",
+											"description": "Mês (1-12) (opcional, padrão: mês atual)"
+										}
+									]
+								},
+								"description": "Relatório de interações com o agente IA em um mês específico\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros:**\n- `year` (opcional): Ano. Se omitido, usa o ano atual.\n- `month` (opcional): Mês (1-12). Se omitido, usa o mês atual.\n\n**Resposta:**\n```json\n{\n  \"year\": 2025,\n  \"month\": 11,\n  \"dailyStatistics\": {\n    \"1\": 45,\n    \"2\": 52,\n    \"3\": 38\n  },\n  \"total\": 1245\n}\n```"
+							},
+							"response": []
+						}
+					]
 				},
 				{
-					"name": "Relatório Diário",
+					"name": "Statistics",
+					"item": [
+						{
+							"name": "Estatísticas por Provider",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/agent/stats/providers?startDate=2025-10-15&endDate=2025-11-14",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"agent",
+										"stats",
+										"providers"
+									],
+									"query": [
+										{
+											"key": "startDate",
+											"value": "2025-10-15",
+											"description": "Data de início (opcional, padrão: 30 dias atrás)"
+										},
+										{
+											"key": "endDate",
+											"value": "2025-11-14",
+											"description": "Data de fim (opcional, padrão: hoje)"
+										}
+									]
+								},
+								"description": "Estatísticas de uso por provider de IA (OpenAI, Gemini, etc)\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros (todos opcionais):**\n- `startDate`: Data de início no formato YYYY-MM-DD (padrão: 30 dias atrás)\n- `endDate`: Data de fim no formato YYYY-MM-DD (padrão: hoje)\n\n**Resposta:**\n```json\n{\n  \"period\": {\n    \"start\": \"2025-10-15\",\n    \"end\": \"2025-11-14\"\n  },\n  \"providers\": {\n    \"OpenAI\": 456,\n    \"Gemini\": 234\n  },\n  \"totalInteractions\": 690\n}\n```"
+							},
+							"response": []
+						},
+						{
+							"name": "Estatísticas de Custos",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/agent/stats/costs?startDate=2025-10-15&endDate=2025-11-14",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"agent",
+										"stats",
+										"costs"
+									],
+									"query": [
+										{
+											"key": "startDate",
+											"value": "2025-10-15",
+											"description": "Data de início (opcional, padrão: 30 dias atrás)"
+										},
+										{
+											"key": "endDate",
+											"value": "2025-11-14",
+											"description": "Data de fim (opcional, padrão: hoje)"
+										}
+									]
+								},
+								"description": "Estatísticas de custos e tokens utilizados pelo agente IA\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros (todos opcionais):**\n- `startDate`: Data de início no formato YYYY-MM-DD (padrão: 30 dias atrás)\n- `endDate`: Data de fim no formato YYYY-MM-DD (padrão: hoje)\n\n**Resposta:**\n```json\n{\n  \"period\": {\n    \"start\": \"2025-10-15\",\n    \"end\": \"2025-11-14\"\n  },\n  \"totalInteractions\": 690,\n  \"totalCost\": 12.45,\n  \"averageCostPerInteraction\": 0.018\n}\n```"
+							},
+							"response": []
+						},
+						{
+							"name": "Threads Mais Ativas",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Api-Key",
+										"value": "{{apiKey}}",
+										"description": "API Key para autenticação",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl{{environment}}}}/slack/agent/stats/threads/top?startDate=2025-10-15&endDate=2025-11-14&limit=10",
+									"host": [
+										"{{baseUrl{{environment}}}}"
+									],
+									"path": [
+										"slack",
+										"agent",
+										"stats",
+										"threads",
+										"top"
+									],
+									"query": [
+										{
+											"key": "startDate",
+											"value": "2025-10-15",
+											"description": "Data de início (opcional, padrão: 30 dias atrás)"
+										},
+										{
+											"key": "endDate",
+											"value": "2025-11-14",
+											"description": "Data de fim (opcional, padrão: hoje)"
+										},
+										{
+											"key": "limit",
+											"value": "10",
+											"description": "Quantidade de resultados (opcional, padrão: 10)"
+										}
+									]
+								},
+								"description": "Lista as conversas/threads mais ativas com o agente IA\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros (todos opcionais):**\n- `startDate`: Data de início (padrão: 30 dias atrás)\n- `endDate`: Data de fim (padrão: hoje)\n- `limit`: Quantidade de resultados (padrão: 10)\n\n**Resposta:**\n```json\n{\n  \"period\": {\n    \"start\": \"2025-10-15\",\n    \"end\": \"2025-11-14\"\n  },\n  \"topThreads\": [\n    {\n      \"threadKey\": \"T09K2BS0A65_U09K48KPT41_C09KM8W0MST_1731595000.123456\",\n      \"interactions\": 45\n    },\n    {\n      \"threadKey\": \"T09K2BS0A65_U09K48KPT42_C09KM8W0MST_1731595100.234567\",\n      \"interactions\": 32\n    }\n  ]\n}\n```"
+							},
+							"response": []
+						}
+					]
+				}
+			],
+			"description": "Estatísticas e relatórios do agente IA, incluindo uso, custos e threads (todos requerem autenticação via API Key)"
+		},
+		{
+			"name": "Consolidated Reports",
+			"item": [
+				{
+					"name": "Relatório Consolidado",
 					"request": {
 						"auth": {
 							"type": "noauth"
@@ -961,164 +1695,34 @@
 							}
 						],
 						"url": {
-							"raw": "{{baseUrl{{environment}}}}/slack/messages/reports/daily?date=2025-11-14",
+							"raw": "{{baseUrl{{environment}}}}/slack/reports/consolidated?period=daily&date=2025-11-14",
 							"host": [
 								"{{baseUrl{{environment}}}}"
 							],
 							"path": [
 								"slack",
-								"messages",
 								"reports",
-								"daily"
+								"consolidated"
 							],
 							"query": [
+								{
+									"key": "period",
+									"value": "daily",
+									"description": "Tipo de período: daily, weekly, monthly (padrão: daily)"
+								},
 								{
 									"key": "date",
 									"value": "2025-11-14",
-									"description": "Data do relatório (opcional, padrão: hoje)"
+									"description": "Data de referência no formato YYYY-MM-DD (opcional, padrão: ontem)"
 								}
 							]
 						},
-						"description": "Relatório de mensagens enviadas em um dia específico\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros:**\n- `date` (opcional): Data no formato YYYY-MM-DD. Se omitido, usa a data atual.\n\n**Resposta:**\n```json\n{\n  \"date\": \"2025-11-14\",\n  \"statistics\": {\n    \"CHANNEL\": 45,\n    \"USER\": 12,\n    \"GROUP\": 3\n  },\n  \"total\": 60\n}\n```"
-					},
-					"response": []
-				},
-				{
-					"name": "Relatório Semanal",
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "X-Api-Key",
-								"value": "{{apiKey}}",
-								"description": "API Key para autenticação",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl{{environment}}}}/slack/messages/reports/weekly?startDate=2025-11-07",
-							"host": [
-								"{{baseUrl{{environment}}}}"
-							],
-							"path": [
-								"slack",
-								"messages",
-								"reports",
-								"weekly"
-							],
-							"query": [
-								{
-									"key": "startDate",
-									"value": "2025-11-07",
-									"description": "Data de início (opcional, padrão: 7 dias atrás)"
-								}
-							]
-						},
-						"description": "Relatório de mensagens enviadas em uma semana (7 dias)\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros:**\n- `startDate` (opcional): Data de início no formato YYYY-MM-DD. Se omitido, usa 7 dias atrás.\n\n**Resposta:**\n```json\n{\n  \"startDate\": \"2025-11-07\",\n  \"endDate\": \"2025-11-14\",\n  \"dailyStatistics\": {\n    \"2025-11-07\": 45,\n    \"2025-11-08\": 52,\n    \"2025-11-09\": 38\n  },\n  \"total\": 285\n}\n```"
-					},
-					"response": []
-				},
-				{
-					"name": "Relatório Mensal",
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "X-Api-Key",
-								"value": "{{apiKey}}",
-								"description": "API Key para autenticação",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl{{environment}}}}/slack/messages/reports/monthly?year=2025&month=11",
-							"host": [
-								"{{baseUrl{{environment}}}}"
-							],
-							"path": [
-								"slack",
-								"messages",
-								"reports",
-								"monthly"
-							],
-							"query": [
-								{
-									"key": "year",
-									"value": "2025",
-									"description": "Ano (opcional, padrão: ano atual)"
-								},
-								{
-									"key": "month",
-									"value": "11",
-									"description": "Mês (1-12) (opcional, padrão: mês atual)"
-								}
-							]
-						},
-						"description": "Relatório de mensagens enviadas em um mês específico\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros:**\n- `year` (opcional): Ano. Se omitido, usa o ano atual.\n- `month` (opcional): Mês (1-12). Se omitido, usa o mês atual.\n\n**Resposta:**\n```json\n{\n  \"year\": 2025,\n  \"month\": 11,\n  \"dailyStatistics\": {\n    \"1\": 45,\n    \"2\": 52,\n    \"3\": 38,\n    \"...\": \"...\"\n  },\n  \"total\": 1245\n}\n```"
-					},
-					"response": []
-				},
-				{
-					"name": "Auditoria de Mensagens",
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "X-Api-Key",
-								"value": "{{apiKey}}",
-								"description": "API Key para autenticação",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl{{environment}}}}/slack/messages/logs/audit?startDate=2025-11-07&endDate=2025-11-14&ip=&apiKeyName=",
-							"host": [
-								"{{baseUrl{{environment}}}}"
-							],
-							"path": [
-								"slack",
-								"messages",
-								"logs",
-								"audit"
-							],
-							"query": [
-								{
-									"key": "startDate",
-									"value": "2025-11-07",
-									"description": "Data de início (opcional, padrão: 7 dias atrás)"
-								},
-								{
-									"key": "endDate",
-									"value": "2025-11-14",
-									"description": "Data de fim (opcional, padrão: hoje)"
-								},
-								{
-									"key": "ip",
-									"value": "",
-									"description": "Filtrar por IP específico (opcional)"
-								},
-								{
-									"key": "apiKeyName",
-									"value": "",
-									"description": "Filtrar por nome da API Key (opcional)"
-								}
-							]
-						},
-						"description": "Log de auditoria de mensagens enviadas com informações detalhadas\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros (todos opcionais):**\n- `startDate`: Data de início (padrão: 7 dias atrás)\n- `endDate`: Data de fim (padrão: hoje)\n- `ip`: Filtrar por IP de origem\n- `apiKeyName`: Filtrar por nome da API Key\n\n**Resposta:**\n```json\n{\n  \"count\": 150,\n  \"logs\": [\n    {\n      \"messageTs\": \"1731596040.123456\",\n      \"channel\": \"C09KM8W0MST\",\n      \"destinationType\": \"CHANNEL\",\n      \"sentAt\": \"2025-11-14T10:30:00\",\n      \"sourceIp\": \"192.168.1.100\",\n      \"forwardedFor\": \"203.0.113.42\",\n      \"userAgent\": \"PostmanRuntime/7.32.3\",\n      \"apiKeyName\": \"Integração Produção\",\n      \"status\": \"SENT\"\n    }\n  ]\n}\n```"
+						"description": "Relatório consolidado que combina estatísticas de mensagens, comandos e agente IA\n\n**Autenticação:** Requer header `X-Api-Key`\n\n**Parâmetros (todos opcionais):**\n- `period`: Tipo de período - `daily` (diário), `weekly` (semanal), `monthly` (mensal). Padrão: `daily`\n- `date`: Data de referência no formato YYYY-MM-DD. Padrão: ontem\n\n**Resposta (exemplo para daily):**\n```json\n{\n  \"period\": \"2025-11-14\",\n  \"periodType\": \"daily\",\n  \"messages\": {\n    \"total\": 145,\n    \"breakdown\": {\n      \"CHANNEL\": 89,\n      \"USER\": 45,\n      \"GROUP\": 11\n    }\n  },\n  \"commands\": {\n    \"total\": 234,\n    \"breakdown\": {\n      \"!ajuda\": 89,\n      \"!ping\": 67,\n      \"!lembrete\": 45\n    }\n  },\n  \"agent\": {\n    \"total\": 68,\n    \"breakdown\": {\n      \"OpenAI\": 45,\n      \"Gemini\": 23\n    }\n  }\n}\n```\n\n**Exemplo para weekly:**\n```json\n{\n  \"period\": \"2025-11-07 a 2025-11-14\",\n  \"periodType\": \"weekly\",\n  \"messages\": { ... },\n  \"commands\": { ... },\n  \"agent\": { ... }\n}\n```\n\n**Exemplo para monthly:**\n```json\n{\n  \"period\": \"2025-11\",\n  \"periodType\": \"monthly\",\n  \"messages\": { ... },\n  \"commands\": { ... },\n  \"agent\": { ... }\n}\n```"
 					},
 					"response": []
 				}
 			],
-			"description": "Operações com canais do Slack (todos requerem autenticação via API Key)"
+			"description": "Relatório consolidado que combina estatísticas de mensagens, comandos e agente IA (requer autenticação via API Key)"
 		},
 		{
 			"name": "Slack Users",
@@ -1191,8 +1795,8 @@
 							]
 						},
 						"description": "Publica/atualiza a Home tab do app para um usuário\n\n**Autenticação:** Requer header `X-Api-Key`\n\nO TeamId é identificado automaticamente através da API Key.\n\n**Refresh automático:** Se o token do Slack expirar, o sistema automaticamente renova e tenta novamente."
-			},
-			"response": []
+					},
+					"response": []
 				}
 			],
 			"description": "Operações com a Home tab do Slack (todos requerem autenticação via API Key)"
@@ -1202,28 +1806,28 @@
 			"item": [
 				{
 					"name": "Listar Lembretes do Team",
-			"request": {
-				"auth": {
-					"type": "noauth"
-				},
-				"method": "GET",
-				"header": [
-					{
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "GET",
+						"header": [
+							{
 								"key": "X-Api-Key",
 								"value": "{{apiKey}}",
 								"description": "API Key para autenticação",
-						"type": "text"
-					}
-				],
-				"url": {
-					"raw": "{{baseUrl{{environment}}}}/slack/reminders",
-					"host": [
-						"{{baseUrl{{environment}}}}"
-					],
-					"path": [
-						"slack",
-						"reminders"
-					]
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl{{environment}}}}/slack/reminders",
+							"host": [
+								"{{baseUrl{{environment}}}}"
+							],
+							"path": [
+								"slack",
+								"reminders"
+							]
 						},
 						"description": "Lista todos os lembretes do workspace\n\n**Autenticação:** Requer header `X-Api-Key`\n\nO TeamId é identificado automaticamente através da API Key."
 					},
@@ -1264,50 +1868,50 @@
 							]
 						},
 						"description": "Lista lembretes de um usuário específico\n\n**Autenticação:** Requer header `X-Api-Key`\n\nO TeamId é identificado automaticamente através da API Key."
-			},
-			"response": []
-		},
-		{
-			"name": "Criar Lembrete",
-			"request": {
-				"auth": {
-					"type": "noauth"
+					},
+					"response": []
 				},
-				"method": "POST",
-				"header": [
-					{
+				{
+					"name": "Criar Lembrete",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
 								"key": "X-Api-Key",
 								"value": "{{apiKey}}",
 								"description": "API Key para autenticação",
-						"type": "text"
+								"type": "text"
 							},
 							{
 								"key": "Content-Type",
 								"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
+							}
+						],
+						"body": {
+							"mode": "raw",
 							"raw": "{\n    \"UserId\": \"{{userId}}\",\n    \"Message\": \"Reunião importante às 15h\",\n    \"DueDate\": \"2025-11-15T15:00:00\",\n    \"ChannelId\": \"{{channelId}}\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{baseUrl{{environment}}}}/slack/reminders",
-					"host": [
-						"{{baseUrl{{environment}}}}"
-					],
-					"path": [
-						"slack",
-						"reminders"
-					]
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl{{environment}}}}/slack/reminders",
+							"host": [
+								"{{baseUrl{{environment}}}}"
+							],
+							"path": [
+								"slack",
+								"reminders"
+							]
 						},
 						"description": "Cria um novo lembrete\n\n**Autenticação:** Requer header `X-Api-Key`\n\nO TeamId é identificado automaticamente através da API Key.\n\n**Parâmetros:**\n- `UserId`: ID do usuário no Slack\n- `Message`: Mensagem do lembrete\n- `DueDate`: Data/hora em horário de Brasília (GMT-3) no formato ISO 8601\n- `ChannelId` (opcional): Se fornecido, envia mensagem no canal também"
-			},
-			"response": []
+					},
+					"response": []
 				}
 			],
 			"description": "Gerenciamento de lembretes (todos requerem autenticação via API Key)"

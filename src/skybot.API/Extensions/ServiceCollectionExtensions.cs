@@ -93,6 +93,9 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddCoreServices(this IServiceCollection services, IConfiguration configuration)
     {
+        // HttpContextAccessor para capturar informações de auditoria
+        services.AddHttpContextAccessor();
+        
         // Repositórios - Scoped (seguro para Dapper)
         services.AddScoped<IReminderRepository, ReminderRepository>();
         services.AddScoped<ISlackTokenRepository, SlackTokenRepository>();
@@ -100,6 +103,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
         services.AddScoped<IMessageLogRepository, MessageLogRepository>();
         services.AddScoped<IWorkspaceSettingsRepository, WorkspaceSettingsRepository>();
+        services.AddScoped<ICommandInteractionRepository, CommandInteractionRepository>();
+        services.AddScoped<IAgentConversationRepository, AgentConversationRepository>();
+        services.AddScoped<IAgentInteractionRepository, AgentInteractionRepository>();
 
         // Serviços de infraestrutura - Scoped
         services.AddScoped<ISlackService, SlackService>();

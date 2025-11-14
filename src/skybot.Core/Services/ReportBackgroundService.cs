@@ -48,6 +48,8 @@ public class ReportBackgroundService : BackgroundService
         var workspaceSettingsRepo = scope.ServiceProvider.GetRequiredService<IWorkspaceSettingsRepository>();
         var slackService = scope.ServiceProvider.GetRequiredService<ISlackService>();
         var messageLogRepo = scope.ServiceProvider.GetRequiredService<IMessageLogRepository>();
+        var commandInteractionRepo = scope.ServiceProvider.GetRequiredService<ICommandInteractionRepository>();
+        var agentInteractionRepo = scope.ServiceProvider.GetRequiredService<IAgentInteractionRepository>();
 
         // Obter todas as configurações de workspace
         var allSettings = await workspaceSettingsRepo.GetAllAsync();
@@ -59,21 +61,21 @@ public class ReportBackgroundService : BackgroundService
                 // Relatório Diário
                 if (settings.DailyReportEnabled && ShouldSendReport(now, settings.DailyReportTime))
                 {
-                    await SendDailyReportAsync(settings.TeamId, settings.AdminUserId, slackService, messageLogRepo);
+                    await SendDailyReportAsync(settings.TeamId, settings.AdminUserId, slackService, messageLogRepo, commandInteractionRepo, agentInteractionRepo);
                 }
 
                 // Relatório Semanal
                 if (settings.WeeklyReportEnabled && now.DayOfWeek == (DayOfWeek)settings.WeeklyReportDay 
                     && ShouldSendReport(now, settings.WeeklyReportTime))
                 {
-                    await SendWeeklyReportAsync(settings.TeamId, settings.AdminUserId, slackService, messageLogRepo);
+                    await SendWeeklyReportAsync(settings.TeamId, settings.AdminUserId, slackService, messageLogRepo, commandInteractionRepo, agentInteractionRepo);
                 }
 
                 // Relatório Mensal
                 if (settings.MonthlyReportEnabled && now.Day == settings.MonthlyReportDay 
                     && ShouldSendReport(now, settings.MonthlyReportTime))
                 {
-                    await SendMonthlyReportAsync(settings.TeamId, settings.AdminUserId, slackService, messageLogRepo);
+                    await SendMonthlyReportAsync(settings.TeamId, settings.AdminUserId, slackService, messageLogRepo, commandInteractionRepo, agentInteractionRepo);
                 }
             }
             catch (Exception ex)
@@ -92,18 +94,34 @@ public class ReportBackgroundService : BackgroundService
         return currentTime >= targetTime && currentTime < targetTime.Add(TimeSpan.FromMinutes(10));
     }
 
-    private async Task SendDailyReportAsync(string teamId, string adminUserId, ISlackService slackService, IMessageLogRepository messageLogRepo)
+    private async Task SendDailyReportAsync(
+        string teamId, 
+        string adminUserId, 
+        ISlackService slackService, 
+        IMessageLogRepository messageLogRepo,
+        ICommandInteractionRepository commandInteractionRepo,
+        IAgentInteractionRepository agentInteractionRepo)
     {
         var yesterday = DateTime.UtcNow.AddDays(-1).Date;
-        var stats = await messageLogRepo.GetDailyStatsAsync(teamId, yesterday);
-        var total = stats.Values.Sum();
+        
+        // Estatísticas de mensagens
+        var messageStats = await messageLogRepo.GetDailyStatsAsync(teamId, yesterday);
+        var totalMessages = messageStats.Values.Sum();
+        
+        // Estatísticas de comandos e interações
+        var commandStats = await commandInteractionRepo.GetDailyStatsAsync(teamId, yesterday);
+        var totalCommands = commandStats.Values.Sum();
+        
+        // Estatísticas do agente IA
+        var agentStats = await agentInteractionRepo.GetDailyStatsAsync(teamId, yesterday);
+        var totalAgent = agentStats.Values.Sum();
 
         var blocks = new List<object>
         {
             new
             {
                 type = "header",
-                text = new { type = "plain_text", text = $"📊 Relatório Diário - {yesterday:dd/MM/yyyy}" }
+                text = new { type = "plain_text", text = $"📊 Relatório Diário Completo - {yesterday:dd/MM/yyyy}" }
             },
             new
             {
@@ -111,10 +129,34 @@ public class ReportBackgroundService : BackgroundService
                 text = new
                 {
                     type = "mrkdwn",
-                    text = $"*Total de mensagens enviadas:* {total}\n\n" +
-                           $"• Canais: {stats.GetValueOrDefault("CHANNEL", 0)}\n" +
-                           $"• Usuários (DM): {stats.GetValueOrDefault("USER", 0)}\n" +
-                           $"• Grupos: {stats.GetValueOrDefault("GROUP", 0)}"
+                    text = $"*📨 Mensagens Enviadas:* {totalMessages}\n" +
+                           $"• Canais: {messageStats.GetValueOrDefault("CHANNEL", 0)}\n" +
+                           $"• Usuários (DM): {messageStats.GetValueOrDefault("USER", 0)}\n" +
+                           $"• Grupos: {messageStats.GetValueOrDefault("GROUP", 0)}"
+                }
+            },
+            new { type = "divider" },
+            new
+            {
+                type = "section",
+                text = new
+                {
+                    type = "mrkdwn",
+                    text = $"*⚡ Interações com o Bot:* {totalCommands}\n" +
+                           $"• Comandos: {commandStats.GetValueOrDefault("COMMAND", 0)}\n" +
+                           $"• Botões: {commandStats.GetValueOrDefault("BUTTON", 0)}\n" +
+                           $"• Modais: {commandStats.GetValueOrDefault("MODAL", 0)}"
+                }
+            },
+            new { type = "divider" },
+            new
+            {
+                type = "section",
+                text = new
+                {
+                    type = "mrkdwn",
+                    text = $"*🤖 Interações com Agente IA:* {totalAgent}\n" +
+                           string.Join("\n", agentStats.Select(kvp => $"• {kvp.Key}: {kvp.Value}"))
                 }
             },
             new { type = "divider" },
@@ -140,7 +182,7 @@ public class ReportBackgroundService : BackgroundService
         
         if (result.Success)
         {
-            Console.WriteLine($"[INFO] Relatório diário enviado para admin do team {teamId}");
+            Console.WriteLine($"[INFO] Relatório diário completo enviado para admin do team {teamId}");
         }
         else
         {
@@ -148,7 +190,13 @@ public class ReportBackgroundService : BackgroundService
         }
     }
 
-    private async Task SendWeeklyReportAsync(string teamId, string adminUserId, ISlackService slackService, IMessageLogRepository messageLogRepo)
+    private async Task SendWeeklyReportAsync(
+        string teamId, 
+        string adminUserId, 
+        ISlackService slackService, 
+        IMessageLogRepository messageLogRepo,
+        ICommandInteractionRepository commandInteractionRepo,
+        IAgentInteractionRepository agentInteractionRepo)
     {
         var lastWeek = DateTime.UtcNow.AddDays(-7);
         var stats = await messageLogRepo.GetWeeklyStatsAsync(teamId, lastWeek);
@@ -197,7 +245,13 @@ public class ReportBackgroundService : BackgroundService
         Console.WriteLine($"[INFO] Relatório semanal enviado para admin do team {teamId}");
     }
 
-    private async Task SendMonthlyReportAsync(string teamId, string adminUserId, ISlackService slackService, IMessageLogRepository messageLogRepo)
+    private async Task SendMonthlyReportAsync(
+        string teamId, 
+        string adminUserId, 
+        ISlackService slackService, 
+        IMessageLogRepository messageLogRepo,
+        ICommandInteractionRepository commandInteractionRepo,
+        IAgentInteractionRepository agentInteractionRepo)
     {
         var lastMonth = DateTime.UtcNow.AddMonths(-1);
         var stats = await messageLogRepo.GetMonthlyStatsAsync(teamId, lastMonth.Year, lastMonth.Month);

@@ -822,4 +822,373 @@ app.MapGet("/slack/messages/logs/audit", async (
     });
 });
 
+// ===== ENDPOINTS DE RELATÓRIOS DE COMANDOS E INTERAÇÕES =====
+
+// Endpoint: Relatório diário de comandos
+app.MapGet("/slack/commands/reports/daily", async (
+    HttpContext ctx,
+    ICommandInteractionRepository commandInteractionRepo,
+    DateTime? date) =>
+{
+    var teamId = ctx.Items["TeamId"]?.ToString();
+    if (string.IsNullOrEmpty(teamId))
+        return Results.Unauthorized();
+
+    var targetDate = date ?? DateTime.UtcNow.AddDays(-1);
+    var stats = await commandInteractionRepo.GetDailyStatsAsync(teamId, targetDate);
+    
+    return Results.Ok(new
+    {
+        date = targetDate.ToString("yyyy-MM-dd"),
+        statistics = stats,
+        total = stats.Values.Sum()
+    });
+});
+
+// Endpoint: Relatório semanal de comandos
+app.MapGet("/slack/commands/reports/weekly", async (
+    HttpContext ctx,
+    ICommandInteractionRepository commandInteractionRepo,
+    DateTime? startDate) =>
+{
+    var teamId = ctx.Items["TeamId"]?.ToString();
+    if (string.IsNullOrEmpty(teamId))
+        return Results.Unauthorized();
+
+    var targetDate = startDate ?? DateTime.UtcNow.AddDays(-7);
+    var stats = await commandInteractionRepo.GetWeeklyStatsAsync(teamId, targetDate);
+    
+    return Results.Ok(new
+    {
+        startDate = targetDate.ToString("yyyy-MM-dd"),
+        endDate = targetDate.AddDays(7).ToString("yyyy-MM-dd"),
+        dailyStatistics = stats,
+        total = stats.Values.Sum()
+    });
+});
+
+// Endpoint: Relatório mensal de comandos
+app.MapGet("/slack/commands/reports/monthly", async (
+    HttpContext ctx,
+    ICommandInteractionRepository commandInteractionRepo,
+    int? year,
+    int? month) =>
+{
+    var teamId = ctx.Items["TeamId"]?.ToString();
+    if (string.IsNullOrEmpty(teamId))
+        return Results.Unauthorized();
+
+    var targetYear = year ?? DateTime.UtcNow.Year;
+    var targetMonth = month ?? DateTime.UtcNow.Month;
+    
+    var stats = await commandInteractionRepo.GetMonthlyStatsAsync(teamId, targetYear, targetMonth);
+    
+    return Results.Ok(new
+    {
+        year = targetYear,
+        month = targetMonth,
+        dailyStatistics = stats,
+        total = stats.Values.Sum()
+    });
+});
+
+// Endpoint: Estatísticas de comandos mais usados
+app.MapGet("/slack/commands/stats", async (
+    HttpContext ctx,
+    ICommandInteractionRepository commandInteractionRepo,
+    DateTime? startDate,
+    DateTime? endDate) =>
+{
+    var teamId = ctx.Items["TeamId"]?.ToString();
+    if (string.IsNullOrEmpty(teamId))
+        return Results.Unauthorized();
+
+    var start = startDate ?? DateTime.UtcNow.AddDays(-30);
+    var end = endDate ?? DateTime.UtcNow;
+    
+    var commandStats = await commandInteractionRepo.GetCommandStatsAsync(teamId, start, end);
+    var typeStats = await commandInteractionRepo.GetInteractionTypeStatsAsync(teamId, start, end);
+    
+    return Results.Ok(new
+    {
+        period = new { start = start.ToString("yyyy-MM-dd"), end = end.ToString("yyyy-MM-dd") },
+        byCommand = commandStats,
+        byType = typeStats,
+        totalInteractions = commandStats.Values.Sum()
+    });
+});
+
+// Endpoint: Botões mais clicados
+app.MapGet("/slack/commands/stats/buttons", async (
+    HttpContext ctx,
+    ICommandInteractionRepository commandInteractionRepo,
+    DateTime? startDate,
+    DateTime? endDate,
+    int? limit) =>
+{
+    var teamId = ctx.Items["TeamId"]?.ToString();
+    if (string.IsNullOrEmpty(teamId))
+        return Results.Unauthorized();
+
+    var start = startDate ?? DateTime.UtcNow.AddDays(-30);
+    var end = endDate ?? DateTime.UtcNow;
+    var topLimit = limit ?? 10;
+    
+    var topButtons = await commandInteractionRepo.GetMostUsedButtonsAsync(teamId, start, end, topLimit);
+    
+    return Results.Ok(new
+    {
+        period = new { start = start.ToString("yyyy-MM-dd"), end = end.ToString("yyyy-MM-dd") },
+        topButtons = topButtons.Select(b => new { actionId = b.Item1, count = b.Item2 })
+    });
+});
+
+// Endpoint: Top usuários mais ativos
+app.MapGet("/slack/commands/stats/users/top", async (
+    HttpContext ctx,
+    ICommandInteractionRepository commandInteractionRepo,
+    DateTime? startDate,
+    DateTime? endDate,
+    int? limit) =>
+{
+    var teamId = ctx.Items["TeamId"]?.ToString();
+    if (string.IsNullOrEmpty(teamId))
+        return Results.Unauthorized();
+
+    var start = startDate ?? DateTime.UtcNow.AddDays(-30);
+    var end = endDate ?? DateTime.UtcNow;
+    var topLimit = limit ?? 10;
+    
+    var topUsers = await commandInteractionRepo.GetTopUsersAsync(teamId, start, end, topLimit);
+    
+    return Results.Ok(new
+    {
+        period = new { start = start.ToString("yyyy-MM-dd"), end = end.ToString("yyyy-MM-dd") },
+        topUsers = topUsers.Select(u => new { userId = u.UserId, interactions = u.Count })
+    });
+});
+
+// ===== ENDPOINTS DE RELATÓRIOS DO AGENTE IA =====
+
+// Endpoint: Relatório diário do agente
+app.MapGet("/slack/agent/reports/daily", async (
+    HttpContext ctx,
+    IAgentInteractionRepository agentInteractionRepo,
+    DateTime? date) =>
+{
+    var teamId = ctx.Items["TeamId"]?.ToString();
+    if (string.IsNullOrEmpty(teamId))
+        return Results.Unauthorized();
+
+    var targetDate = date ?? DateTime.UtcNow.AddDays(-1);
+    var stats = await agentInteractionRepo.GetDailyStatsAsync(teamId, targetDate);
+    
+    return Results.Ok(new
+    {
+        date = targetDate.ToString("yyyy-MM-dd"),
+        statisticsByProvider = stats,
+        total = stats.Values.Sum()
+    });
+});
+
+// Endpoint: Relatório semanal do agente
+app.MapGet("/slack/agent/reports/weekly", async (
+    HttpContext ctx,
+    IAgentInteractionRepository agentInteractionRepo,
+    DateTime? startDate) =>
+{
+    var teamId = ctx.Items["TeamId"]?.ToString();
+    if (string.IsNullOrEmpty(teamId))
+        return Results.Unauthorized();
+
+    var targetDate = startDate ?? DateTime.UtcNow.AddDays(-7);
+    var stats = await agentInteractionRepo.GetWeeklyStatsAsync(teamId, targetDate);
+    
+    return Results.Ok(new
+    {
+        startDate = targetDate.ToString("yyyy-MM-dd"),
+        endDate = targetDate.AddDays(7).ToString("yyyy-MM-dd"),
+        dailyStatistics = stats,
+        total = stats.Values.Sum()
+    });
+});
+
+// Endpoint: Relatório mensal do agente
+app.MapGet("/slack/agent/reports/monthly", async (
+    HttpContext ctx,
+    IAgentInteractionRepository agentInteractionRepo,
+    int? year,
+    int? month) =>
+{
+    var teamId = ctx.Items["TeamId"]?.ToString();
+    if (string.IsNullOrEmpty(teamId))
+        return Results.Unauthorized();
+
+    var targetYear = year ?? DateTime.UtcNow.Year;
+    var targetMonth = month ?? DateTime.UtcNow.Month;
+    
+    var stats = await agentInteractionRepo.GetMonthlyStatsAsync(teamId, targetYear, targetMonth);
+    
+    return Results.Ok(new
+    {
+        year = targetYear,
+        month = targetMonth,
+        dailyStatistics = stats,
+        total = stats.Values.Sum()
+    });
+});
+
+// Endpoint: Estatísticas de uso por provider
+app.MapGet("/slack/agent/stats/providers", async (
+    HttpContext ctx,
+    IAgentInteractionRepository agentInteractionRepo,
+    DateTime? startDate,
+    DateTime? endDate) =>
+{
+    var teamId = ctx.Items["TeamId"]?.ToString();
+    if (string.IsNullOrEmpty(teamId))
+        return Results.Unauthorized();
+
+    var start = startDate ?? DateTime.UtcNow.AddDays(-30);
+    var end = endDate ?? DateTime.UtcNow;
+    
+    var providerStats = await agentInteractionRepo.GetProviderStatsAsync(teamId, start, end);
+    
+    return Results.Ok(new
+    {
+        period = new { start = start.ToString("yyyy-MM-dd"), end = end.ToString("yyyy-MM-dd") },
+        providers = providerStats,
+        totalInteractions = providerStats.Values.Sum()
+    });
+});
+
+// Endpoint: Estatísticas de custos
+app.MapGet("/slack/agent/stats/costs", async (
+    HttpContext ctx,
+    IAgentInteractionRepository agentInteractionRepo,
+    DateTime? startDate,
+    DateTime? endDate) =>
+{
+    var teamId = ctx.Items["TeamId"]?.ToString();
+    if (string.IsNullOrEmpty(teamId))
+        return Results.Unauthorized();
+
+    var start = startDate ?? DateTime.UtcNow.AddDays(-30);
+    var end = endDate ?? DateTime.UtcNow;
+    
+    var costStats = await agentInteractionRepo.GetCostStatsAsync(teamId, start, end);
+    
+    return Results.Ok(new
+    {
+        period = new { start = start.ToString("yyyy-MM-dd"), end = end.ToString("yyyy-MM-dd") },
+        totalInteractions = costStats.TotalInteractions,
+        totalCost = costStats.TotalCost,
+        averageCostPerInteraction = costStats.TotalInteractions > 0 && costStats.TotalCost.HasValue 
+            ? costStats.TotalCost.Value / costStats.TotalInteractions 
+            : 0
+    });
+});
+
+// Endpoint: Threads mais ativas
+app.MapGet("/slack/agent/stats/threads/top", async (
+    HttpContext ctx,
+    IAgentInteractionRepository agentInteractionRepo,
+    DateTime? startDate,
+    DateTime? endDate,
+    int? limit) =>
+{
+    var teamId = ctx.Items["TeamId"]?.ToString();
+    if (string.IsNullOrEmpty(teamId))
+        return Results.Unauthorized();
+
+    var start = startDate ?? DateTime.UtcNow.AddDays(-30);
+    var end = endDate ?? DateTime.UtcNow;
+    var topLimit = limit ?? 10;
+    
+    var topThreads = await agentInteractionRepo.GetTopThreadsAsync(teamId, start, end, topLimit);
+    
+    return Results.Ok(new
+    {
+        period = new { start = start.ToString("yyyy-MM-dd"), end = end.ToString("yyyy-MM-dd") },
+        topThreads = topThreads.Select(t => new { threadKey = t.ThreadKey, interactions = t.Count })
+    });
+});
+
+// ===== ENDPOINT CONSOLIDADO =====
+
+// Endpoint: Relatório consolidado
+app.MapGet("/slack/reports/consolidated", async (
+    HttpContext ctx,
+    IMessageLogRepository messageLogRepo,
+    ICommandInteractionRepository commandInteractionRepo,
+    IAgentInteractionRepository agentInteractionRepo,
+    string? period,
+    DateTime? date) =>
+{
+    var teamId = ctx.Items["TeamId"]?.ToString();
+    if (string.IsNullOrEmpty(teamId))
+        return Results.Unauthorized();
+
+    var targetDate = date ?? DateTime.UtcNow.AddDays(-1);
+    var periodType = period?.ToLower() ?? "daily";
+
+    object messageStats, commandStats, agentStats;
+    string periodLabel;
+
+    switch (periodType)
+    {
+        case "weekly":
+            var weekStart = targetDate.AddDays(-7);
+            messageStats = await messageLogRepo.GetWeeklyStatsAsync(teamId, weekStart);
+            commandStats = await commandInteractionRepo.GetWeeklyStatsAsync(teamId, weekStart);
+            agentStats = await agentInteractionRepo.GetWeeklyStatsAsync(teamId, weekStart);
+            periodLabel = $"{weekStart:yyyy-MM-dd} a {targetDate:yyyy-MM-dd}";
+            break;
+        case "monthly":
+            messageStats = await messageLogRepo.GetMonthlyStatsAsync(teamId, targetDate.Year, targetDate.Month);
+            commandStats = await commandInteractionRepo.GetMonthlyStatsAsync(teamId, targetDate.Year, targetDate.Month);
+            agentStats = await agentInteractionRepo.GetMonthlyStatsAsync(teamId, targetDate.Year, targetDate.Month);
+            periodLabel = $"{targetDate:yyyy-MM}";
+            break;
+        default: // daily
+            messageStats = await messageLogRepo.GetDailyStatsAsync(teamId, targetDate);
+            commandStats = await commandInteractionRepo.GetDailyStatsAsync(teamId, targetDate);
+            agentStats = await agentInteractionRepo.GetDailyStatsAsync(teamId, targetDate);
+            periodLabel = targetDate.ToString("yyyy-MM-dd");
+            break;
+    }
+
+    var msgDict = messageStats as Dictionary<string, int> ?? new Dictionary<string, int>();
+    var cmdDict = commandStats as Dictionary<string, int> ?? new Dictionary<string, int>();
+    var agentDict = agentStats as Dictionary<string, int> ?? new Dictionary<string, int>();
+
+    return Results.Ok(new
+    {
+        period = periodLabel,
+        periodType = periodType,
+        messages = new
+        {
+            total = msgDict.Values.Sum(),
+            breakdown = msgDict
+        },
+        commands = new
+        {
+            total = cmdDict.Values.Sum(),
+            breakdown = cmdDict
+        },
+        agent = new
+        {
+            total = agentDict.Values.Sum(),
+            byProvider = agentDict
+        },
+        summary = new
+        {
+            totalMessages = msgDict.Values.Sum(),
+            totalCommands = cmdDict.Values.Sum(),
+            totalAgentInteractions = agentDict.Values.Sum(),
+            grandTotal = msgDict.Values.Sum() + cmdDict.Values.Sum() + agentDict.Values.Sum()
+        }
+    });
+});
+
 app.Run();
